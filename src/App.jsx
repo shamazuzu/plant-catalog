@@ -1,7 +1,9 @@
+
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
-  Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save
+  Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save,
+  Trash2, ChevronUp, ChevronDown
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -81,6 +83,12 @@ export default function App() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminOffers, setAdminOffers] = useState([]);
   const [adminPlants, setAdminPlants] = useState([]);
+  const [adminCategories, setAdminCategories] = useState([]);
+
+  const [categoryForm, setCategoryForm] = useState('');
+  const [editingCategoryId, setEditingCategoryId] = useState(null);
+  const [categorySaving, setCategorySaving] = useState(false);
+
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [newPhotos, setNewPhotos] = useState([]);
@@ -88,26 +96,25 @@ export default function App() {
   const [adminMessage, setAdminMessage] = useState('');
   const [adminError, setAdminError] = useState('');
 
-// Проверка прав администратора
-async function checkAdmin(user) {
-  if (!user || !supabase) {
-    setIsAdmin(false);
-    return false;
+  // Проверка прав администратора
+  async function checkAdmin(user) {
+    if (!user || !supabase) {
+      setIsAdmin(false);
+      return false;
+    }
+
+    const { data, error } = await supabase.rpc('is_admin');
+
+    if (error) {
+      console.error('Ошибка проверки администратора:', error);
+      setIsAdmin(false);
+      return false;
+    }
+
+    const result = data === true;
+    setIsAdmin(result);
+    return result;
   }
-
-  const { data, error } = await supabase.rpc('is_admin');
-
-  if (error) {
-    console.error('Ошибка проверки администратора:', error);
-    setIsAdmin(false);
-    return false;
-  }
-
-  const isAdmin = data === true;
-  setIsAdmin(isAdmin);
-
-  return isAdmin;
-}
 
   // Авторизация и восстановление пароля
   useEffect(() => {
@@ -118,7 +125,6 @@ async function checkAdmin(user) {
 
     supabase.auth.getSession().then(async ({ data }) => {
       const currentSession = data.session;
-
       setSession(currentSession);
 
       if (currentSession?.user) {
@@ -154,7 +160,6 @@ async function checkAdmin(user) {
   // Вход
   async function handleLogin(event) {
     event.preventDefault();
-
     setAuthError('');
     setAuthMessage('');
 
@@ -176,15 +181,16 @@ async function checkAdmin(user) {
       return;
     }
 
-    const { data: adminData, error: adminError } = await supabase.rpc('is_admin');
+    const { data: adminData, error: adminError } =
+      await supabase.rpc('is_admin');
 
-if (adminError || adminData !== true) {
-  console.error('Ошибка проверки администратора:', adminError);
-  await supabase.auth.signOut();
-  setAuthError('Не удалось подтвердить права администратора.');
-  setAuthLoading(false);
-  return;
-}
+    if (adminError || adminData !== true) {
+      console.error('Ошибка проверки администратора:', adminError);
+      await supabase.auth.signOut();
+      setAuthError('Не удалось подтвердить права администратора.');
+      setAuthLoading(false);
+      return;
+    }
 
     setSession(data.session);
     setIsAdmin(true);
@@ -196,7 +202,6 @@ if (adminError || adminData !== true) {
   // Запрос письма для сброса пароля
   async function handlePasswordResetRequest(event) {
     event.preventDefault();
-
     setAuthError('');
     setAuthMessage('');
 
@@ -214,9 +219,7 @@ if (adminError || adminData !== true) {
 
     const { error } = await supabase.auth.resetPasswordForEmail(
       email.trim(),
-      {
-        redirectTo: window.location.origin
-      }
+      { redirectTo: window.location.origin }
     );
 
     setAuthLoading(false);
@@ -234,7 +237,6 @@ if (adminError || adminData !== true) {
   // Сохранение нового пароля
   async function handlePasswordUpdate(event) {
     event.preventDefault();
-
     setAuthError('');
     setAuthMessage('');
 
@@ -280,9 +282,7 @@ if (adminError || adminData !== true) {
 
   // Выход
   async function handleLogout() {
-    if (supabase) {
-      await supabase.auth.signOut();
-    }
+    if (supabase) await supabase.auth.signOut();
 
     setSession(null);
     setIsAdmin(false);
@@ -315,9 +315,7 @@ if (adminError || adminData !== true) {
         .order('created_at', { ascending: false })
     ]);
 
-    if (cats) {
-      setCategories(cats);
-    }
+    if (cats) setCategories(cats);
 
     if (error) {
       console.error(error);
@@ -358,7 +356,8 @@ if (adminError || adminData !== true) {
 
     const [
       { data: plants, error: plantsError },
-      { data: offersData, error: offersError }
+      { data: offersData, error: offersError },
+      { data: categoryData, error: categoryError }
     ] = await Promise.all([
       supabase
         .from('plants')
@@ -368,26 +367,188 @@ if (adminError || adminData !== true) {
       supabase
         .from('plant_offers')
         .select('id,plant_id,title,size_label,price,stock,is_individual,status,description_override,avito_url,qr_code,plants(name,botanical_name),offer_photos(storage_path,sort_order)')
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+
+      supabase
+        .from('plant_categories')
+        .select('id,name,sort_order,is_active')
+        .order('sort_order', { ascending: true })
     ]);
 
-    if (plantsError || offersError) {
+    if (plantsError || offersError || categoryError) {
       setAdminError(
         'Не удалось загрузить данные: ' +
-        (plantsError?.message || offersError?.message)
+        (plantsError?.message || offersError?.message || categoryError?.message)
       );
       return;
     }
 
     setAdminPlants(plants || []);
     setAdminOffers(offersData || []);
+    setAdminCategories(categoryData || []);
   }
 
   useEffect(() => {
-    if (adminOpen && isAdmin) {
-      loadAdminData();
-    }
+    if (adminOpen && isAdmin) loadAdminData();
   }, [adminOpen, isAdmin]);
+
+  // Управление категориями
+  function startEditCategory(item) {
+    setEditingCategoryId(item.id);
+    setCategoryForm(item.name);
+    setAdminError('');
+  }
+
+  function cancelEditCategory() {
+    setEditingCategoryId(null);
+    setCategoryForm('');
+  }
+
+  async function saveCategory(event) {
+    event.preventDefault();
+
+    const name = categoryForm.trim();
+
+    if (!name) {
+      setAdminError('Введи название категории.');
+      return;
+    }
+
+    setCategorySaving(true);
+    setAdminError('');
+    setAdminMessage('');
+
+    let result;
+
+    if (editingCategoryId) {
+      result = await supabase
+        .from('plant_categories')
+        .update({ name })
+        .eq('id', editingCategoryId);
+    } else {
+      const maxOrder = Math.max(
+        0,
+        ...adminCategories.map(item => Number(item.sort_order) || 0)
+      );
+
+      result = await supabase
+        .from('plant_categories')
+        .insert({
+          name,
+          sort_order: maxOrder + 1,
+          is_active: true
+        });
+    }
+
+    if (result.error) {
+      setAdminError('Не удалось сохранить категорию: ' + result.error.message);
+      setCategorySaving(false);
+      return;
+    }
+
+    cancelEditCategory();
+    await loadAdminData();
+    await loadCatalog();
+
+    setAdminMessage('Категории обновлены.');
+    setCategorySaving(false);
+  }
+
+  async function toggleCategory(item) {
+    setAdminError('');
+
+    const { error } = await supabase
+      .from('plant_categories')
+      .update({ is_active: !item.is_active })
+      .eq('id', item.id);
+
+    if (error) {
+      setAdminError('Не удалось изменить категорию: ' + error.message);
+      return;
+    }
+
+    if (category === item.name && item.is_active) {
+      setCategory('Все растения');
+    }
+
+    await loadAdminData();
+    await loadCatalog();
+  }
+
+  async function deleteCategory(item) {
+    setAdminError('');
+
+    const { count, error: countError } = await supabase
+      .from('plants')
+      .select('id', { count: 'exact', head: true })
+      .eq('category_id', item.id);
+
+    if (countError) {
+      setAdminError('Не удалось проверить категорию: ' + countError.message);
+      return;
+    }
+
+    if (count > 0) {
+      setAdminError(
+        `Нельзя удалить «${item.name}»: в ней есть растения. Сначала перемести их в другую категорию.`
+      );
+      return;
+    }
+
+    if (!window.confirm(`Удалить категорию «${item.name}»?`)) return;
+
+    const { error } = await supabase
+      .from('plant_categories')
+      .delete()
+      .eq('id', item.id);
+
+    if (error) {
+      setAdminError('Не удалось удалить категорию: ' + error.message);
+      return;
+    }
+
+    if (category === item.name) setCategory('Все растения');
+
+    await loadAdminData();
+    await loadCatalog();
+    setAdminMessage('Категория удалена.');
+  }
+
+  async function moveCategory(item, direction) {
+    const sorted = [...adminCategories].sort(
+      (a, b) => a.sort_order - b.sort_order
+    );
+
+    const index = sorted.findIndex(c => c.id === item.id);
+    const nextIndex = index + direction;
+
+    if (nextIndex < 0 || nextIndex >= sorted.length) return;
+
+    const reordered = [...sorted];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(nextIndex, 0, moved);
+
+    const updates = await Promise.all(
+      reordered.map((c, i) =>
+        supabase
+          .from('plant_categories')
+          .update({ sort_order: i + 1 })
+          .eq('id', c.id)
+      )
+    );
+
+    const failed = updates.find(result => result.error);
+
+    if (failed) {
+      setAdminError(
+        'Не удалось изменить порядок: ' + failed.error.message
+      );
+      return;
+    }
+
+    await loadAdminData();
+    await loadCatalog();
+  }
 
   // Новое предложение
   function startNew() {
@@ -449,7 +610,6 @@ if (adminError || adminData !== true) {
     try {
       let plantId = form.plant_id;
 
-      // Если создаём новое растение
       if (!editingId && !plantId) {
         const { data: newPlant, error: plantError } = await supabase
           .from('plants')
@@ -466,7 +626,6 @@ if (adminError || adminData !== true) {
           .single();
 
         if (plantError) throw plantError;
-
         plantId = newPlant.id;
       }
 
@@ -501,11 +660,9 @@ if (adminError || adminData !== true) {
           .single();
 
         if (error) throw error;
-
         offerId = created.id;
       }
 
-      // Загружаем фотографии
       for (let i = 0; i < newPhotos.length; i++) {
         const file = newPhotos[i];
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -553,7 +710,7 @@ if (adminError || adminData !== true) {
     }
   }
 
-  // Скрыть или вернуть предложение в каталог
+  // Скрыть или вернуть предложение
   async function changeOfferStatus(offer, status) {
     const { error } = await supabase
       .from('plant_offers')
@@ -585,7 +742,9 @@ if (adminError || adminData !== true) {
       <header className="topbar">
         <a className="brand" href="#">
           <span className="brand-icon"><Leaf size={21} /></span>
-          <span><span>Kind</span> <span className="brand-light">of</span> <span>Green</span></span>
+          <span>
+            <span>Kind</span> <span className="brand-light">of</span> <span>Green</span>
+          </span>
         </a>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -640,6 +799,119 @@ if (adminError || adminData !== true) {
             >
               <ArrowLeft size={15} /> В каталог
             </button>
+          </div>
+
+          {/* Управление категориями */}
+          <div style={adminPanel}>
+            <h3 style={{ marginTop: 0 }}>Категории растений</h3>
+
+            <p style={mutedText}>
+              Создавай категории, меняй их названия и порядок отображения.
+              Скрытые категории не видны посетителям каталога.
+            </p>
+
+            <form onSubmit={saveCategory}>
+              <label style={fieldLabel}>
+                {editingCategoryId ? 'Новое название категории' : 'Название новой категории'}
+              </label>
+
+              <div style={categoryFormRow}>
+                <input
+                  style={{ ...fieldInput, margin: 0, flex: 1 }}
+                  value={categoryForm}
+                  onChange={e => setCategoryForm(e.target.value)}
+                  placeholder="Например, Алоказии"
+                  required
+                />
+
+                <button
+                  type="submit"
+                  disabled={categorySaving}
+                  style={smallActionButton}
+                >
+                  <Save size={15} />
+                  {categorySaving
+                    ? 'Сохраняем…'
+                    : editingCategoryId
+                      ? 'Сохранить'
+                      : 'Добавить'}
+                </button>
+
+                {editingCategoryId && (
+                  <button
+                    type="button"
+                    style={iconButton}
+                    onClick={cancelEditCategory}
+                    title="Отмена"
+                  >
+                    <X size={17} />
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <div style={{ marginTop: 18 }}>
+              {adminCategories.length === 0 ? (
+                <p className="empty">Категорий пока нет.</p>
+              ) : (
+                [...adminCategories]
+                  .sort((a, b) => a.sort_order - b.sort_order)
+                  .map((item, index, array) => (
+                    <div key={item.id} style={categoryRow}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong>{item.name}</strong>
+                        <div style={categoryStatus}>
+                          {item.is_active ? 'Видна в каталоге' : 'Скрыта'}
+                        </div>
+                      </div>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => moveCategory(item, -1)}
+                        disabled={index === 0}
+                        title="Переместить вверх"
+                      >
+                        <ChevronUp size={17} />
+                      </button>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => moveCategory(item, 1)}
+                        disabled={index === array.length - 1}
+                        title="Переместить вниз"
+                      >
+                        <ChevronDown size={17} />
+                      </button>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => startEditCategory(item)}
+                        title="Переименовать"
+                      >
+                        <Pencil size={16} />
+                      </button>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => toggleCategory(item)}
+                        title={item.is_active ? 'Скрыть' : 'Показать'}
+                      >
+                        {item.is_active
+                          ? <EyeOff size={16} />
+                          : <Eye size={16} />}
+                      </button>
+
+                      <button
+                        style={deleteButton}
+                        onClick={() => deleteCategory(item)}
+                        title="Удалить"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
           </div>
 
           <div style={adminPanel}>
@@ -893,10 +1165,10 @@ if (adminError || adminData !== true) {
                     : 'Добавить в каталог'}
               </button>
             </form>
-
-            {adminError && <p style={errorText}>{adminError}</p>}
-            {adminMessage && <p style={successText}>{adminMessage}</p>}
           </div>
+
+          {adminError && <p style={errorText}>{adminError}</p>}
+          {adminMessage && <p style={successText}>{adminMessage}</p>}
 
           <div style={{ marginTop: 30 }}>
             <h3>Предложения в каталоге</h3>
@@ -1424,6 +1696,47 @@ const iconButton = {
   color: '#405c43',
   cursor: 'pointer',
   flexShrink: 0
+};
+
+const categoryFormRow = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap'
+};
+
+const smallActionButton = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 7,
+  padding: '11px 14px',
+  border: 0,
+  borderRadius: 5,
+  background: '#405c43',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: 13
+};
+
+const categoryRow = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  padding: '10px 0',
+  borderBottom: '1px solid #edf0e9'
+};
+
+const categoryStatus = {
+  fontSize: 11,
+  color: '#788575',
+  marginTop: 4
+};
+
+const deleteButton = {
+  ...iconButton,
+  color: '#b64b42',
+  borderColor: '#eadbd8'
 };
 
 const errorText = {
