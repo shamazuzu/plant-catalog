@@ -133,18 +133,16 @@ const demoPlants = [
     botanical_name: 'Alocasia',
     category: 'Алоказии',
     description: 'Компактная алоказия с выразительной листвой.',
-    variants: [
-      {
-        id: 'demo-1a',
-        pot_diameter: 8,
-        height_min: 12,
-        height_max: 16,
-        price: 1200,
-        stock: 1,
-        status: 'available',
-        photos: []
-      }
-    ]
+    variants: [{
+      id: 'demo-1a',
+      pot_diameter: 8,
+      height_min: 12,
+      height_max: 16,
+      price: 1200,
+      stock: 1,
+      status: 'available',
+      photos: []
+    }]
   },
   {
     id: 'demo-2',
@@ -152,18 +150,16 @@ const demoPlants = [
     botanical_name: 'Zamioculcas zamiifolia',
     category: 'Замиокулькасы',
     description: 'Неприхотливое растение с тёмными листьями.',
-    variants: [
-      {
-        id: 'demo-2a',
-        pot_diameter: 9,
-        height_min: 15,
-        height_max: 20,
-        price: 900,
-        stock: 2,
-        status: 'available',
-        photos: []
-      }
-    ]
+    variants: [{
+      id: 'demo-2a',
+      pot_diameter: 9,
+      height_min: 15,
+      height_max: 20,
+      price: 900,
+      stock: 2,
+      status: 'available',
+      photos: []
+    }]
   },
   {
     id: 'demo-3',
@@ -171,18 +167,16 @@ const demoPlants = [
     botanical_name: 'Alocasia × amazonica',
     category: 'Алоказии',
     description: 'Контрастные листья с выразительными прожилками.',
-    variants: [
-      {
-        id: 'demo-3a',
-        pot_diameter: 10,
-        height_min: 20,
-        height_max: 25,
-        price: 1500,
-        stock: 1,
-        status: 'available',
-        photos: []
-      }
-    ]
+    variants: [{
+      id: 'demo-3a',
+      pot_diameter: 10,
+      height_min: 20,
+      height_max: 25,
+      price: 1500,
+      stock: 1,
+      status: 'available',
+      photos: []
+    }]
   }
 ];
 
@@ -191,6 +185,7 @@ export default function App() {
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState('Все растения');
   const [query, setQuery] = useState('');
+  const [sortBy, setSortBy] = useState('price-asc');
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
 
@@ -258,7 +253,6 @@ export default function App() {
     return result;
   }
 
-  // Авторизация и восстановление пароля
   useEffect(() => {
     if (!supabase) {
       setAuthReady(true);
@@ -305,7 +299,6 @@ export default function App() {
     };
   }, []);
 
-  // Вход
   async function handleLogin(event) {
     event.preventDefault();
     setAuthError('');
@@ -347,7 +340,6 @@ export default function App() {
     setAuthLoading(false);
   }
 
-  // Запрос письма для сброса пароля
   async function handlePasswordResetRequest(event) {
     event.preventDefault();
     setAuthError('');
@@ -382,7 +374,6 @@ export default function App() {
     );
   }
 
-  // Сохранение нового пароля
   async function handlePasswordUpdate(event) {
     event.preventDefault();
     setAuthError('');
@@ -437,7 +428,6 @@ export default function App() {
     setAdminTab('plants');
   }
 
-  // Загрузка публичного каталога
   async function loadCatalog() {
     if (!supabase) {
       setPlants(demoPlants);
@@ -471,9 +461,7 @@ export default function App() {
         .order('created_at', { ascending: false })
     ]);
 
-    if (cats) {
-      setCategories(sortCategories(cats));
-    }
+    if (cats) setCategories(sortCategories(cats));
 
     if (error) {
       console.error('Ошибка загрузки каталога:', error);
@@ -491,7 +479,6 @@ export default function App() {
     loadCatalog();
   }, []);
 
-  // Поддержка ссылок вида #/plant/ID
   useEffect(() => {
     function readHash() {
       const match = window.location.hash.match(/^#\/plant\/([^/]+)$/);
@@ -524,7 +511,6 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Загрузка данных админки
   async function loadAdminData() {
     if (!supabase) return;
 
@@ -575,7 +561,6 @@ export default function App() {
     if (adminOpen && isAdmin) loadAdminData();
   }, [adminOpen, isAdmin]);
 
-  // Управление категориями
   function startEditCategory(item) {
     setEditingCategoryId(item.id);
     setCategoryForm(item.name);
@@ -604,7 +589,6 @@ export default function App() {
 
     try {
       let result;
-
       const baseSlug = makeSlug(name);
 
       if (!baseSlug) {
@@ -614,10 +598,7 @@ export default function App() {
       if (editingCategoryId) {
         result = await supabase
           .from('plant_categories')
-          .update({
-            name,
-            slug: baseSlug
-          })
+          .update({ name, slug: baseSlug })
           .eq('id', editingCategoryId);
       } else {
         const maxOrder = Math.max(
@@ -656,10 +637,8 @@ export default function App() {
       if (result.error) throw result.error;
 
       cancelEditCategory();
-
       await loadAdminData();
       await loadCatalog();
-
       setAdminMessage('Категория сохранена.');
     } catch (error) {
       console.error(error);
@@ -692,7 +671,6 @@ export default function App() {
 
     await loadAdminData();
     await loadCatalog();
-
     setAdminMessage('Статус категории изменён.');
   }
 
@@ -733,11 +711,9 @@ export default function App() {
 
     await loadAdminData();
     await loadCatalog();
-
     setAdminMessage('Категория удалена.');
   }
 
-  // Новое предложение / новый размер
   function startNew() {
     setEditingId(null);
     setForm(emptyForm);
@@ -746,7 +722,6 @@ export default function App() {
     setAdminError('');
   }
 
-  // Редактирование существующего размера
   function startEdit(offer) {
     setEditingId(offer.id);
 
@@ -767,11 +742,9 @@ export default function App() {
     setAdminMessage('');
     setAdminError('');
     setAdminTab('plants');
-
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Сохранение размера и фотографий
   async function handleSaveOffer(event) {
     event.preventDefault();
 
@@ -900,9 +873,7 @@ export default function App() {
       }
 
       setAdminMessage(
-        editingId
-          ? 'Изменения сохранены.'
-          : 'Размер добавлен в каталог.'
+        editingId ? 'Изменения сохранены.' : 'Размер добавлен в каталог.'
       );
 
       setEditingId(null);
@@ -940,7 +911,6 @@ export default function App() {
     await loadCatalog();
   }
 
-  // Полное удаление одного размера и его фотографий
   async function deleteOffer(offer) {
     const confirmed = window.confirm(
       `Удалить размер горшка ${
@@ -955,7 +925,6 @@ export default function App() {
     setAdminMessage('');
 
     try {
-      // Получаем пути фотографий выбранного размера
       const { data: photos, error: photosError } = await supabase
         .from('offer_photos')
         .select('storage_path')
@@ -967,7 +936,6 @@ export default function App() {
         .map(photo => photo.storage_path)
         .filter(Boolean);
 
-      // Удаляем записи о фотографиях
       const { error: photoRecordsError } = await supabase
         .from('offer_photos')
         .delete()
@@ -975,7 +943,6 @@ export default function App() {
 
       if (photoRecordsError) throw photoRecordsError;
 
-      // Удаляем выбранный размер
       const { error: offerError } = await supabase
         .from('plant_offers')
         .delete()
@@ -983,7 +950,6 @@ export default function App() {
 
       if (offerError) throw offerError;
 
-      // Удаляем файлы фотографий из хранилища
       if (paths.length > 0) {
         const { error: storageError } = await supabase.storage
           .from('plant-photos')
@@ -1002,7 +968,6 @@ export default function App() {
 
       await loadAdminData();
       await loadCatalog();
-
       setAdminMessage('Размер и его фотографии удалены.');
     } catch (error) {
       console.error(error);
@@ -1010,16 +975,41 @@ export default function App() {
     }
   }
 
-  const visible = useMemo(
-    () =>
-      plants.filter(p =>
-        (category === 'Все растения' || p.category === category) &&
-        `${p.name} ${p.botanical_name || ''} ${p.cultivar || ''}`
-          .toLowerCase()
-          .includes(query.toLowerCase())
-      ),
-    [plants, category, query]
-  );
+  // Фильтрация и сортировка каталога
+  const visible = useMemo(() => {
+    const filtered = plants.filter(p =>
+      (category === 'Все растения' || p.category === category) &&
+      `${p.name} ${p.botanical_name || ''} ${p.cultivar || ''}`
+        .toLowerCase()
+        .includes(query.toLowerCase())
+    );
+
+    return filtered.sort((a, b) => {
+      const pricesA = a.variants
+        .filter(v => v.status === 'available' && Number(v.stock) > 0)
+        .map(v => Number(v.price));
+
+      const pricesB = b.variants
+        .filter(v => v.status === 'available' && Number(v.stock) > 0)
+        .map(v => Number(v.price));
+
+      const priceA = pricesA.length ? Math.min(...pricesA) : 0;
+      const priceB = pricesB.length ? Math.min(...pricesB) : 0;
+
+      switch (sortBy) {
+        case 'price-asc':
+          return priceA - priceB;
+        case 'price-desc':
+          return priceB - priceA;
+        case 'name-asc':
+          return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
+        case 'name-desc':
+          return b.name.localeCompare(a.name, 'ru', { sensitivity: 'base' });
+        default:
+          return 0;
+      }
+    });
+  }, [plants, category, query, sortBy]);
 
   return (
     <div className="page">
@@ -1085,10 +1075,7 @@ export default function App() {
               <h2>Админ-панель</h2>
             </div>
 
-            <button
-              style={headerButton}
-              onClick={() => setAdminOpen(false)}
-            >
+            <button style={headerButton} onClick={() => setAdminOpen(false)}>
               <ArrowLeft size={15} /> В каталог
             </button>
           </div>
@@ -1156,9 +1143,7 @@ export default function App() {
                     <Save size={15} />
                     {categorySaving
                       ? 'Сохраняем…'
-                      : editingCategoryId
-                        ? 'Сохранить'
-                        : 'Добавить'}
+                      : editingCategoryId ? 'Сохранить' : 'Добавить'}
                   </button>
 
                   {editingCategoryId && (
@@ -1200,9 +1185,7 @@ export default function App() {
                         onClick={() => toggleCategory(item)}
                         title={item.is_active ? 'Скрыть' : 'Показать'}
                       >
-                        {item.is_active
-                          ? <EyeOff size={16} />
-                          : <Eye size={16} />}
+                        {item.is_active ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
 
                       <button
@@ -1243,9 +1226,7 @@ export default function App() {
                 <form onSubmit={handleSaveOffer}>
                   {!editingId && (
                     <>
-                      <label style={fieldLabel}>
-                        Существующее растение
-                      </label>
+                      <label style={fieldLabel}>Существующее растение</label>
 
                       <select
                         style={fieldInput}
@@ -1405,9 +1386,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <label style={fieldLabel}>
-                    Особенности конкретного размера
-                  </label>
+                  <label style={fieldLabel}>Особенности конкретного размера</label>
                   <textarea
                     style={fieldInput}
                     rows="3"
@@ -1461,20 +1440,14 @@ export default function App() {
                     </p>
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    style={submitButton}
-                  >
+                  <button type="submit" disabled={saving} style={submitButton}>
                     <Save
                       size={16}
                       style={{ verticalAlign: 'middle', marginRight: 7 }}
                     />
                     {saving
                       ? 'Сохраняем…'
-                      : editingId
-                        ? 'Сохранить изменения'
-                        : 'Добавить в каталог'}
+                      : editingId ? 'Сохранить изменения' : 'Добавить в каталог'}
                   </button>
                 </form>
               </div>
@@ -1739,6 +1712,29 @@ export default function App() {
                       />
                     </div>
 
+                    <div className="search" style={{ maxWidth: 230 }}>
+                      <select
+                        value={sortBy}
+                        onChange={e => setSortBy(e.target.value)}
+                        style={{
+                          width: '100%',
+                          border: 0,
+                          outline: 0,
+                          background: 'transparent',
+                          color: '#405c43',
+                          font: 'inherit',
+                          fontSize: 13,
+                          cursor: 'pointer'
+                        }}
+                        aria-label="Сортировка растений"
+                      >
+                        <option value="price-asc">Сначала дешевле</option>
+                        <option value="price-desc">Сначала дороже</option>
+                        <option value="name-asc">По алфавиту А–Я</option>
+                        <option value="name-desc">По алфавиту Я–А</option>
+                      </select>
+                    </div>
+
                     <div className="filter-label">
                       <SlidersHorizontal size={16} /> Категории
                     </div>
@@ -1771,13 +1767,16 @@ export default function App() {
                         const available = p.variants.filter(v =>
                           v.status === 'available' && Number(v.stock) > 0
                         );
+
                         const minPrice = Math.min(
                           ...available.map(v => Number(v.price))
                         );
+
                         const totalStock = available.reduce(
                           (sum, v) => sum + Number(v.stock || 0),
                           0
                         );
+
                         const firstVariant = sortVariants(available)[0];
                         const firstPhoto = firstVariant?.photos?.[0]?.storage_path;
 
@@ -1857,7 +1856,6 @@ export default function App() {
         </>
       )}
 
-      {/* Создание нового пароля */}
       {recoveryMode && (
         <div style={modalBackdrop}>
           <div style={modalBox}>
@@ -1896,11 +1894,7 @@ export default function App() {
 
               {authError && <p style={errorText}>{authError}</p>}
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                style={submitButton}
-              >
+              <button type="submit" disabled={authLoading} style={submitButton}>
                 {authLoading ? 'Сохраняем…' : 'Сохранить пароль'}
               </button>
             </form>
@@ -1908,7 +1902,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Вход и восстановление пароля */}
       {loginOpen && (
         <div
           style={modalBackdrop}
@@ -1983,16 +1976,10 @@ export default function App() {
               {authError && <p style={errorText}>{authError}</p>}
               {authMessage && <p style={successText}>{authMessage}</p>}
 
-              <button
-                type="submit"
-                disabled={authLoading}
-                style={submitButton}
-              >
+              <button type="submit" disabled={authLoading} style={submitButton}>
                 {authLoading
                   ? 'Подожди…'
-                  : resetEmailMode
-                    ? 'Отправить письмо'
-                    : 'Войти'}
+                  : resetEmailMode ? 'Отправить письмо' : 'Войти'}
               </button>
             </form>
 
