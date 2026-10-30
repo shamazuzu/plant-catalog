@@ -589,7 +589,7 @@ export default function App() {
       <header className="topbar">
         <a className="brand" href="#">
           <span className="brand-icon"><Leaf size={21} /></span>
-          <span>зелёная<span className="brand-light">комната</span></span>
+          <span><span>Kind</span> <span className="brand-light">of</span> <span>Green</span></span>
         </a>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
