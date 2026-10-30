@@ -1,3 +1,4 @@
+//мывывмывмывмывм
 import React, { useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
 import { Html5Qrcode } from 'html5-qrcode';
