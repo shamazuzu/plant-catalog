@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
   Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save,
-  Trash2
+  Trash2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -192,6 +192,9 @@ export default function App() {
   const [selectedPlantId, setSelectedPlantId] = useState(null);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
 
+  // Индекс фотографии для полноэкранного просмотра.
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [authReady, setAuthReady] = useState(false);
@@ -233,6 +236,61 @@ export default function App() {
     ? selectedPlant.variants.find(v => v.id === selectedVariantId) ||
       sortVariants(selectedPlant.variants)[0]
     : null;
+
+  const lightboxPhotos = selectedVariant?.photos || [];
+
+  function showNextPhoto() {
+    setLightboxIndex(current => {
+      if (current === null || lightboxPhotos.length < 2) return current;
+      return (current + 1) % lightboxPhotos.length;
+    });
+  }
+
+  function showPreviousPhoto() {
+    setLightboxIndex(current => {
+      if (current === null || lightboxPhotos.length < 2) return current;
+      return (current - 1 + lightboxPhotos.length) % lightboxPhotos.length;
+    });
+  }
+
+  function closeLightbox() {
+    setLightboxIndex(null);
+  }
+
+  // Управление полноэкранным просмотром с клавиатуры.
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+
+    function handleKeyDown(event) {
+      if (event.key === 'Escape') {
+        setLightboxIndex(null);
+      }
+
+      if (event.key === 'ArrowRight') {
+        setLightboxIndex(current => {
+          if (current === null || lightboxPhotos.length < 2) return current;
+          return (current + 1) % lightboxPhotos.length;
+        });
+      }
+
+      if (event.key === 'ArrowLeft') {
+        setLightboxIndex(current => {
+          if (current === null || lightboxPhotos.length < 2) return current;
+          return (current - 1 + lightboxPhotos.length) % lightboxPhotos.length;
+        });
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow;
+
+    window.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [lightboxIndex, lightboxPhotos.length]);
 
   async function checkAdmin(user) {
     if (!user || !supabase) {
@@ -488,6 +546,7 @@ export default function App() {
       } else {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
+        setLightboxIndex(null);
       }
     }
 
@@ -500,11 +559,13 @@ export default function App() {
   function openPlant(plant) {
     setSelectedPlantId(plant.id);
     setSelectedVariantId(null);
+    setLightboxIndex(null);
     window.location.hash = `/plant/${encodeURIComponent(plant.id)}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function closePlant() {
+    setLightboxIndex(null);
     window.location.hash = '';
     setSelectedPlantId(null);
     setSelectedVariantId(null);
@@ -975,7 +1036,7 @@ export default function App() {
     }
   }
 
-  // Фильтрация и сортировка каталога
+  // Фильтрация и сортировка каталога.
   const visible = useMemo(() => {
     const filtered = plants.filter(p =>
       (category === 'Все растения' || p.category === category) &&
@@ -1017,6 +1078,7 @@ export default function App() {
         <a className="brand" href="#" onClick={() => {
           setSelectedPlantId(null);
           setSelectedVariantId(null);
+          setLightboxIndex(null);
         }}>
           <span className="brand-icon"><Leaf size={21} /></span>
           <span>
@@ -1548,6 +1610,8 @@ export default function App() {
                         <img
                           src={getPhotoUrl(selectedVariant.photos[0].storage_path)}
                           alt={selectedPlant.name}
+                          onClick={() => setLightboxIndex(0)}
+                          style={detailPhotoImage}
                         />
                       ) : (
                         <div className="photo-placeholder">
@@ -1560,12 +1624,19 @@ export default function App() {
                     {selectedVariant?.photos?.length > 1 && (
                       <div style={photoGallery}>
                         {selectedVariant.photos.map((photo, index) => (
-                          <img
+                          <button
                             key={photo.storage_path}
-                            src={getPhotoUrl(photo.storage_path)}
-                            alt={`${selectedPlant.name}, фото ${index + 1}`}
-                            style={galleryImage}
-                          />
+                            type="button"
+                            onClick={() => setLightboxIndex(index)}
+                            style={galleryButton}
+                            aria-label={`Открыть фото ${index + 1}`}
+                          >
+                            <img
+                              src={getPhotoUrl(photo.storage_path)}
+                              alt={`${selectedPlant.name}, фото ${index + 1}`}
+                              style={galleryImage}
+                            />
+                          </button>
                         ))}
                       </div>
                     )}
@@ -1594,7 +1665,10 @@ export default function App() {
                       {selectedPlant.variants.map(v => (
                         <button
                           key={v.id}
-                          onClick={() => setSelectedVariantId(v.id)}
+                          onClick={() => {
+                            setSelectedVariantId(v.id);
+                            setLightboxIndex(null);
+                          }}
                           style={
                             selectedVariant?.id === v.id
                               ? selectedVariantButton
@@ -1854,6 +1928,68 @@ export default function App() {
             <span>Выращено с заботой</span>
           </footer>
         </>
+      )}
+
+      {/* Полноэкранный просмотр фотографий */}
+      {lightboxIndex !== null && lightboxPhotos[lightboxIndex] && (
+        <div
+          style={lightboxBackdrop}
+          onClick={closeLightbox}
+          role="presentation"
+        >
+          <button
+            type="button"
+            onClick={closeLightbox}
+            style={lightboxClose}
+            aria-label="Закрыть просмотр"
+            title="Закрыть (Esc)"
+          >
+            <X size={28} />
+          </button>
+
+          {lightboxPhotos.length > 1 && (
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                showPreviousPhoto();
+              }}
+              style={{ ...lightboxArrow, left: 18 }}
+              aria-label="Предыдущее фото"
+              title="Предыдущее фото"
+            >
+              <ChevronLeft size={34} />
+            </button>
+          )}
+
+          <img
+            src={getPhotoUrl(lightboxPhotos[lightboxIndex].storage_path)}
+            alt={`${selectedPlant?.name || 'Растение'}, фото ${lightboxIndex + 1}`}
+            style={lightboxImage}
+            onClick={event => event.stopPropagation()}
+          />
+
+          {lightboxPhotos.length > 1 && (
+            <button
+              type="button"
+              onClick={event => {
+                event.stopPropagation();
+                showNextPhoto();
+              }}
+              style={{ ...lightboxArrow, right: 18 }}
+              aria-label="Следующее фото"
+              title="Следующее фото"
+            >
+              <ChevronRight size={34} />
+            </button>
+          )}
+
+          {lightboxPhotos.length > 1 && (
+            <div style={lightboxCounter}>
+              {lightboxIndex + 1} / {lightboxPhotos.length}
+            </div>
+          )}
+        </div>
       )}
 
       {recoveryMode && (
@@ -2272,7 +2408,17 @@ const detailPhoto = {
   aspectRatio: '1 / 1',
   overflow: 'hidden',
   borderRadius: 8,
-  background: '#edf1e9'
+  background: '#edf1e9',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center'
+};
+
+const detailPhotoImage = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain',
+  cursor: 'zoom-in'
 };
 
 const photoGallery = {
@@ -2282,19 +2428,89 @@ const photoGallery = {
   marginTop: 10
 };
 
+const galleryButton = {
+  display: 'block',
+  width: '100%',
+  padding: 0,
+  border: 0,
+  borderRadius: 5,
+  background: '#edf1e9',
+  overflow: 'hidden',
+  cursor: 'zoom-in'
+};
+
 const galleryImage = {
+  display: 'block',
   width: '100%',
   aspectRatio: '1 / 1',
-  objectFit: 'cover',
+  objectFit: 'contain',
   borderRadius: 5
 };
 
-const detailTitle = {
-  fontFamily: 'Playfair Display, serif',
-  fontWeight: 500,
-  fontSize: 'clamp(30px,4vw,44px)',
-  lineHeight: 1.15,
-  margin: '8px 0'
+const lightboxBackdrop = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 2000,
+  background: 'rgba(0, 0, 0, 0.94)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '55px 70px 65px',
+  boxSizing: 'border-box'
+};
+
+const lightboxImage = {
+  display: 'block',
+  maxWidth: '100%',
+  maxHeight: '100%',
+  width: 'auto',
+  height: 'auto',
+  objectFit: 'contain',
+  userSelect: 'none'
+};
+
+const lightboxClose = {
+  position: 'absolute',
+  top: 16,
+  right: 18,
+  width: 44,
+  height: 44,
+  display: 'grid',
+  placeItems: 'center',
+  border: 0,
+  borderRadius: '50%',
+  background: 'rgba(255,255,255,0.13)',
+  color: '#fff',
+  cursor: 'pointer',
+  zIndex: 2
+};
+
+const lightboxArrow = {
+  position: 'absolute',
+  top: '50%',
+  transform: 'translateY(-50%)',
+  width: 48,
+  height: 48,
+  display: 'grid',
+  placeItems: 'center',
+  border: 0,
+  borderRadius: '50%',
+  background: 'rgba(255,255,255,0.13)',
+  color: '#fff',
+  cursor: 'pointer',
+  zIndex: 2
+};
+
+const lightboxCounter = {
+  position: 'absolute',
+  bottom: 18,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  color: '#fff',
+  fontSize: 13,
+  background: 'rgba(255,255,255,0.13)',
+  padding: '7px 13px',
+  borderRadius: 20
 };
 
 const variantButtons = {
