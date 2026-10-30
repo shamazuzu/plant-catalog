@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 
+const FAVORITES_KEY = 'kind-of-green-favorites';
+
 function makeSlug(value) {
   const transliteration = {
     а: 'a', б: 'b', в: 'v', г: 'g', д: 'd',
@@ -17,9 +19,7 @@ function makeSlug(value) {
     э: 'e', ю: 'yu', я: 'ya'
   };
 
-  return value
-    .toLowerCase()
-    .split('')
+  return value.toLowerCase().split('')
     .map(char => transliteration[char] ?? char)
     .join('')
     .replace(/[^a-z0-9]+/g, '-')
@@ -50,11 +50,9 @@ function getPhotoUrl(path) {
 }
 
 function sortVariants(variants) {
-  return [...variants].sort((a, b) => {
-    const da = Number(a.pot_diameter) || 0;
-    const db = Number(b.pot_diameter) || 0;
-    return da - db;
-  });
+  return [...variants].sort((a, b) =>
+    (Number(a.pot_diameter) || 0) - (Number(b.pot_diameter) || 0)
+  );
 }
 
 function sortCategories(categories) {
@@ -102,6 +100,7 @@ function mapPublicPlants(rows) {
 
     grouped.get(plant.id).variants.push({
       id: offer.id,
+      article_code: offer.article_code,
       pot_diameter: offer.pot_diameter,
       height_min: offer.height_min,
       height_max: offer.height_max,
@@ -135,6 +134,7 @@ const demoPlants = [
     description: 'Компактная алоказия с выразительной листвой.',
     variants: [{
       id: 'demo-1a',
+      article_code: 'DEMO-001',
       pot_diameter: 8,
       height_min: 12,
       height_max: 16,
@@ -152,6 +152,7 @@ const demoPlants = [
     description: 'Неприхотливое растение с тёмными листьями.',
     variants: [{
       id: 'demo-2a',
+      article_code: 'DEMO-002',
       pot_diameter: 9,
       height_min: 15,
       height_max: 20,
@@ -169,6 +170,7 @@ const demoPlants = [
     description: 'Контрастные листья с выразительными прожилками.',
     variants: [{
       id: 'demo-3a',
+      article_code: 'DEMO-003',
       pot_diameter: 10,
       height_min: 20,
       height_max: 25,
@@ -189,10 +191,40 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
 
+  const [favorites, setFavorites] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
+  const [showFavorites, setShowFavorites] = useState(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
+    } catch (error) {
+      console.error('Не удалось сохранить избранное:', error);
+    }
+  }, [favorites]);
+
+  function toggleFavorite(offerId) {
+    if (!offerId) return;
+
+    setFavorites(current =>
+      current.includes(offerId)
+        ? current.filter(id => id !== offerId)
+        : [...current, offerId]
+    );
+  }
+
+  function isFavorite(offerId) {
+    return favorites.includes(offerId);
+  }
+
   const [selectedPlantId, setSelectedPlantId] = useState(null);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
-
-  // Индекс фотографии для полноэкранного просмотра.
   const [lightboxIndex, setLightboxIndex] = useState(null);
 
   const [session, setSession] = useState(null);
@@ -214,6 +246,7 @@ export default function App() {
 
   const [adminOpen, setAdminOpen] = useState(false);
   const [adminTab, setAdminTab] = useState('plants');
+  const [adminSearch, setAdminSearch] = useState('');
 
   const [adminOffers, setAdminOffers] = useState([]);
   const [adminPlants, setAdminPlants] = useState([]);
@@ -257,14 +290,11 @@ export default function App() {
     setLightboxIndex(null);
   }
 
-  // Управление полноэкранным просмотром с клавиатуры.
   useEffect(() => {
     if (lightboxIndex === null) return;
 
     function handleKeyDown(event) {
-      if (event.key === 'Escape') {
-        setLightboxIndex(null);
-      }
+      if (event.key === 'Escape') setLightboxIndex(null);
 
       if (event.key === 'ArrowRight') {
         setLightboxIndex(current => {
@@ -282,7 +312,6 @@ export default function App() {
     }
 
     const previousOverflow = document.body.style.overflow;
-
     window.addEventListener('keydown', handleKeyDown);
     document.body.style.overflow = 'hidden';
 
@@ -321,7 +350,6 @@ export default function App() {
 
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
-
       setSession(data.session);
 
       if (data.session?.user) {
@@ -479,7 +507,6 @@ export default function App() {
 
   async function handleLogout() {
     if (supabase) await supabase.auth.signOut();
-
     setSession(null);
     setIsAdmin(false);
     setAdminOpen(false);
@@ -505,7 +532,7 @@ export default function App() {
       supabase
         .from('plant_offers')
         .select(`
-          id,plant_id,price,stock,status,
+          id,plant_id,article_code,price,stock,status,
           pot_diameter,height_min,height_max,
           description_override,avito_url,
           plants!inner(
@@ -552,13 +579,15 @@ export default function App() {
 
     readHash();
     window.addEventListener('hashchange', readHash);
-
     return () => window.removeEventListener('hashchange', readHash);
   }, []);
 
   function openPlant(plant) {
     setSelectedPlantId(plant.id);
-    setSelectedVariantId(null);
+
+    const favoriteVariant = plant.variants.find(v => favorites.includes(v.id));
+    setSelectedVariantId(favoriteVariant?.id || null);
+
     setLightboxIndex(null);
     window.location.hash = `/plant/${encodeURIComponent(plant.id)}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -591,7 +620,7 @@ export default function App() {
       supabase
         .from('plant_offers')
         .select(`
-          id,plant_id,title,size_label,price,stock,
+          id,plant_id,title,size_label,article_code,price,stock,
           is_individual,status,description_override,avito_url,
           pot_diameter,height_min,height_max,qr_code,
           plants(name,botanical_name),
@@ -636,7 +665,6 @@ export default function App() {
 
   async function saveCategory(event) {
     event.preventDefault();
-
     const name = categoryForm.trim();
 
     if (!name) {
@@ -673,10 +701,7 @@ export default function App() {
 
         if (slugError) throw slugError;
 
-        const usedSlugs = new Set(
-          (existingSlugs || []).map(item => item.slug)
-        );
-
+        const usedSlugs = new Set((existingSlugs || []).map(item => item.slug));
         let slug = baseSlug;
         let suffix = 2;
 
@@ -808,7 +833,6 @@ export default function App() {
 
   async function handleSaveOffer(event) {
     event.preventDefault();
-
     setAdminMessage('');
     setAdminError('');
 
@@ -1027,6 +1051,8 @@ export default function App() {
         setNewPhotos([]);
       }
 
+      setFavorites(current => current.filter(id => id !== offer.id));
+
       await loadAdminData();
       await loadCatalog();
       setAdminMessage('Размер и его фотографии удалены.');
@@ -1036,14 +1062,27 @@ export default function App() {
     }
   }
 
-  // Фильтрация и сортировка каталога.
   const visible = useMemo(() => {
-    const filtered = plants.filter(p =>
-      (category === 'Все растения' || p.category === category) &&
-      `${p.name} ${p.botanical_name || ''} ${p.cultivar || ''}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-    );
+    const normalizedQuery = query.trim().toLowerCase();
+
+    const filtered = plants.filter(p => {
+      const matchesCategory =
+        category === 'Все растения' || p.category === category;
+
+      const matchesFavorites =
+        !showFavorites || p.variants.some(v => favorites.includes(v.id));
+
+      const searchableText = [
+        p.name,
+        p.botanical_name || '',
+        p.cultivar || '',
+        ...p.variants.map(v => v.article_code || '')
+      ].join(' ').toLowerCase();
+
+      return matchesCategory &&
+        matchesFavorites &&
+        searchableText.includes(normalizedQuery);
+    });
 
     return filtered.sort((a, b) => {
       const pricesA = a.variants
@@ -1058,19 +1097,27 @@ export default function App() {
       const priceB = pricesB.length ? Math.min(...pricesB) : 0;
 
       switch (sortBy) {
-        case 'price-asc':
-          return priceA - priceB;
-        case 'price-desc':
-          return priceB - priceA;
+        case 'price-asc': return priceA - priceB;
+        case 'price-desc': return priceB - priceA;
         case 'name-asc':
           return a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' });
         case 'name-desc':
           return b.name.localeCompare(a.name, 'ru', { sensitivity: 'base' });
-        default:
-          return 0;
+        default: return 0;
       }
     });
-  }, [plants, category, query, sortBy]);
+  }, [plants, category, query, sortBy, showFavorites, favorites]);
+
+  const filteredAdminOffers = useMemo(() => {
+    const normalized = adminSearch.trim().toLowerCase();
+    if (!normalized) return adminOffers;
+
+    return adminOffers.filter(o =>
+      `${o.article_code || ''} ${o.plants?.name || ''} ${o.plants?.botanical_name || ''}`
+        .toLowerCase()
+        .includes(normalized)
+    );
+  }, [adminOffers, adminSearch]);
 
   return (
     <div className="page">
@@ -1517,13 +1564,35 @@ export default function App() {
               <div style={{ marginTop: 30 }}>
                 <h3>Размеры и предложения</h3>
 
-                {adminOffers.length === 0 ? (
-                  <p className="empty">Пока нет предложений.</p>
+                <div className="search" style={{ margin: '14px 0', maxWidth: 420 }}>
+                  <Search size={18} />
+                  <input
+                    value={adminSearch}
+                    onChange={e => setAdminSearch(e.target.value)}
+                    placeholder="Поиск по артикулу или названию..."
+                  />
+                </div>
+
+                {filteredAdminOffers.length === 0 ? (
+                  <p className="empty">
+                    {adminOffers.length === 0
+                      ? 'Пока нет предложений.'
+                      : 'Ничего не найдено.'}
+                  </p>
                 ) : (
-                  adminOffers.map(o => (
+                  filteredAdminOffers.map(o => (
                     <div key={o.id} style={offerRow}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <strong>{o.plants?.name || 'Растение'}</strong>
+
+                        <div style={{
+                          fontSize: 12,
+                          color: '#52634f',
+                          marginTop: 4,
+                          fontWeight: 600
+                        }}>
+                          Артикул: {o.article_code || '—'}
+                        </div>
 
                         <div style={{
                           fontSize: 12,
@@ -1687,6 +1756,43 @@ export default function App() {
 
                     {selectedVariant && (
                       <div style={variantDetails}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          marginBottom: 12
+                        }}>
+                          <strong style={{ color: '#405c43', fontSize: 13 }}>
+                            Артикул: {selectedVariant.article_code || '—'}
+                          </strong>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleFavorite(selectedVariant.id)}
+                            aria-label={
+                              isFavorite(selectedVariant.id)
+                                ? 'Убрать из избранного'
+                                : 'Добавить в избранное'
+                            }
+                            title={
+                              isFavorite(selectedVariant.id)
+                                ? 'Убрать из избранного'
+                                : 'Добавить в избранное'
+                            }
+                            style={{
+                              ...iconButton,
+                              color: isFavorite(selectedVariant.id) ? '#b64b42' : '#405c43',
+                              borderColor: isFavorite(selectedVariant.id) ? '#eadbd8' : '#dfe4d9'
+                            }}
+                          >
+                            <Heart
+                              size={19}
+                              fill={isFavorite(selectedVariant.id) ? '#b64b42' : 'none'}
+                            />
+                          </button>
+                        </div>
+
                         <div style={detailLine}>
                           <span>Диаметр горшка</span>
                           <strong>
@@ -1770,7 +1876,7 @@ export default function App() {
                   <div className="section-heading">
                     <div>
                       <p className="eyebrow">КОЛЛЕКЦИЯ</p>
-                      <h2>Растения в наличии</h2>
+                      <h2>{showFavorites ? 'Избранные растения' : 'Растения в наличии'}</h2>
                     </div>
 
                     <span className="count">{visible.length} позиций</span>
@@ -1782,9 +1888,26 @@ export default function App() {
                       <input
                         value={query}
                         onChange={e => setQuery(e.target.value)}
-                        placeholder="Найти растение..."
+                        placeholder="Найти растение или артикул..."
                       />
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowFavorites(value => !value)}
+                      style={{
+                        ...headerButton,
+                        color: showFavorites ? '#b64b42' : '#405c43',
+                        borderColor: showFavorites ? '#eadbd8' : '#dfe4d9',
+                        background: showFavorites ? '#fff8f7' : '#fff'
+                      }}
+                    >
+                      <Heart
+                        size={16}
+                        fill={showFavorites ? '#b64b42' : 'none'}
+                      />
+                      Избранное ({favorites.length})
+                    </button>
 
                     <div className="search" style={{ maxWidth: 230 }}>
                       <select
@@ -1853,6 +1976,7 @@ export default function App() {
 
                         const firstVariant = sortVariants(available)[0];
                         const firstPhoto = firstVariant?.photos?.[0]?.storage_path;
+                        const favorite = firstVariant && isFavorite(firstVariant.id);
 
                         return (
                           <article
@@ -1876,10 +2000,29 @@ export default function App() {
 
                               <button
                                 className="heart"
-                                aria-label="В избранное"
-                                onClick={e => e.stopPropagation()}
+                                type="button"
+                                aria-label={
+                                  favorite
+                                    ? 'Убрать из избранного'
+                                    : 'Добавить в избранное'
+                                }
+                                title={
+                                  favorite
+                                    ? 'Убрать из избранного'
+                                    : 'Добавить в избранное'
+                                }
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  if (firstVariant) toggleFavorite(firstVariant.id);
+                                }}
+                                style={{
+                                  color: favorite ? '#b64b42' : undefined
+                                }}
                               >
-                                <Heart size={18} />
+                                <Heart
+                                  size={18}
+                                  fill={favorite ? '#b64b42' : 'none'}
+                                />
                               </button>
 
                               <span className="photo-tag">В наличии</span>
@@ -1904,6 +2047,16 @@ export default function App() {
                                 {' · '}{totalStock} шт. в наличии
                               </div>
 
+                              {firstVariant?.article_code && (
+                                <div style={{
+                                  fontSize: 11,
+                                  color: '#788575',
+                                  marginTop: 5
+                                }}>
+                                  Артикул: {firstVariant.article_code}
+                                </div>
+                              )}
+
                               <div className="card-bottom">
                                 <strong>от {formatPrice(minPrice)}</strong>
                                 <span>Подробнее →</span>
@@ -1915,7 +2068,9 @@ export default function App() {
                     </div>
                   ) : (
                     <div className="empty">
-                      Пока здесь нет растений. Они появятся после добавления в каталог.
+                      {showFavorites
+                        ? 'В избранном пока пусто. Нажми на сердечко у понравившегося растения.'
+                        : 'Пока здесь нет растений. Они появятся после добавления в каталог.'}
                     </div>
                   )}
                 </section>
@@ -1930,7 +2085,6 @@ export default function App() {
         </>
       )}
 
-      {/* Полноэкранный просмотр фотографий */}
       {lightboxIndex !== null && lightboxPhotos[lightboxIndex] && (
         <div
           style={lightboxBackdrop}
