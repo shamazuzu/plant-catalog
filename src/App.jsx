@@ -226,6 +226,7 @@ export default function App() {
   const [selectedPlantId, setSelectedPlantId] = useState(null);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [showDelivery, setShowDelivery] = useState(false);
 
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -566,14 +567,24 @@ export default function App() {
 
   useEffect(() => {
     function readHash() {
-      const match = window.location.hash.match(/^#\/plant\/([^/]+)$/);
+      const hash = window.location.hash;
+      const match = hash.match(/^#\/plant\/([^/]+)$/);
 
       if (match) {
+        setShowDelivery(false);
         setSelectedPlantId(decodeURIComponent(match[1]));
+        setSelectedVariantId(null);
+        setLightboxIndex(null);
+      } else if (hash === '#/delivery') {
+        setSelectedPlantId(null);
+        setSelectedVariantId(null);
+        setLightboxIndex(null);
+        setShowDelivery(true);
       } else {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
         setLightboxIndex(null);
+        setShowDelivery(false);
       }
     }
 
@@ -583,6 +594,7 @@ export default function App() {
   }, []);
 
   function openPlant(plant) {
+    setShowDelivery(false);
     setSelectedPlantId(plant.id);
 
     const favoriteVariant = plant.variants.find(v => favorites.includes(v.id));
@@ -598,6 +610,24 @@ export default function App() {
     window.location.hash = '';
     setSelectedPlantId(null);
     setSelectedVariantId(null);
+    setShowDelivery(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openDelivery() {
+    setSelectedPlantId(null);
+    setSelectedVariantId(null);
+    setLightboxIndex(null);
+    window.location.hash = '/delivery';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function backToCatalog() {
+    setShowDelivery(false);
+    setSelectedPlantId(null);
+    setSelectedVariantId(null);
+    setLightboxIndex(null);
+    window.location.hash = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -1122,19 +1152,51 @@ export default function App() {
   return (
     <div className="page">
       <header className="topbar">
-        <a className="brand" href="#" onClick={() => {
-          setSelectedPlantId(null);
-          setSelectedVariantId(null);
-          setLightboxIndex(null);
-        }}>
+        <a
+          className="brand"
+          href="#/"
+          onClick={() => {
+            setSelectedPlantId(null);
+            setSelectedVariantId(null);
+            setLightboxIndex(null);
+            setShowDelivery(false);
+          }}
+        >
           <span className="brand-icon"><Leaf size={21} /></span>
-          <span>
-            <span>Kind</span> <span className="brand-light">of</span> <span>Green</span>
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span>
+              <span>Kind</span> <span className="brand-light">of</span> <span>Green</span>
+            </span>
+            <span style={{
+              fontSize: 10,
+              fontWeight: 400,
+              letterSpacing: '0.08em',
+              color: '#788575'
+            }}>
+              Санкт-Петербург
+            </span>
           </span>
         </a>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 16,
+          flexWrap: 'wrap',
+          justifyContent: 'flex-end'
+        }}>
           <span className="top-note">Небольшая коллекция растений</span>
+
+          <a
+            href="#/delivery"
+            onClick={event => {
+              event.preventDefault();
+              openDelivery();
+            }}
+            style={deliveryLink}
+          >
+            Доставка и самовывоз
+          </a>
 
           {authReady && (
             isAdmin ? (
@@ -1666,7 +1728,61 @@ export default function App() {
       ) : (
         <>
           <main>
-            {selectedPlant ? (
+            {showDelivery ? (
+              <section className="catalog">
+                <button style={backButton} onClick={backToCatalog}>
+                  <ArrowLeft size={16} /> Назад в каталог
+                </button>
+
+                <div style={{ maxWidth: 760, margin: '20px auto 60px' }}>
+                  <p className="eyebrow">KIND OF GREEN</p>
+
+                  <h1 style={detailTitle}>Доставка и самовывоз</h1>
+
+                  <p className="description" style={{ marginTop: 20 }}>
+                    Рассказываю, как можно получить понравившиеся растения.
+                  </p>
+
+                  <div style={deliveryCard}>
+                    <h2 style={deliveryHeading}>Доставка</h2>
+
+                    <p className="description">
+                      Доставка осуществляется курьером Яндекса.
+                      Стоимость доставки оплачивает покупатель.
+                      Возможность доставки и удобное время согласуем
+                      индивидуально при оформлении заказа.
+                    </p>
+                  </div>
+
+                  <div style={deliveryCard}>
+                    <h2 style={deliveryHeading}>Самовывоз</h2>
+
+                    <p className="description">
+                      Самовывоз возможен по предварительной договорённости.
+                      Пожалуйста, сначала свяжитесь со мной, чтобы согласовать
+                      время получения заказа.
+                    </p>
+
+                    <p style={{
+                      color: '#405c43',
+                      fontWeight: 600,
+                      marginTop: 18
+                    }}>
+                      Санкт-Петербург, ул. Верности, 8к3
+                    </p>
+
+                    <a
+                      href="https://yandex.ru/maps/?rtext=~Санкт-Петербург%2C%20улица%20Верности%2C%208к3&rtt=auto"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={routeButton}
+                    >
+                      Построить маршрут в Яндекс Картах
+                    </a>
+                  </div>
+                </div>
+              </section>
+            ) : selectedPlant ? (
               <section className="catalog">
                 <button style={backButton} onClick={closePlant}>
                   <ArrowLeft size={16} /> Назад в каталог
@@ -2318,6 +2434,44 @@ const headerButton = {
   color: '#405c43',
   cursor: 'pointer',
   fontSize: 12
+};
+
+const deliveryLink = {
+  color: '#405c43',
+  fontSize: 12,
+  textDecoration: 'none',
+  borderBottom: '1px solid #cbd5c5',
+  paddingBottom: 3,
+  whiteSpace: 'nowrap'
+};
+
+const deliveryCard = {
+  background: '#fff',
+  border: '1px solid #e3e8df',
+  borderRadius: 8,
+  padding: 24,
+  marginTop: 20
+};
+
+const deliveryHeading = {
+  fontFamily: 'Playfair Display, serif',
+  fontWeight: 500,
+  fontSize: 23,
+  color: '#24352b',
+  margin: '0 0 12px'
+};
+
+const routeButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginTop: 10,
+  padding: '12px 17px',
+  borderRadius: 5,
+  background: '#405c43',
+  color: '#fff',
+  textDecoration: 'none',
+  fontSize: 13
 };
 
 const adminTabs = {
