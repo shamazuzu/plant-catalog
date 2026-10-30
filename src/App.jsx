@@ -580,26 +580,30 @@ export default function App() {
     setCategoryForm('');
   }
 
-  async function saveCategory(event) {
-    event.preventDefault();
+async function saveCategory(event) {
+  event.preventDefault();
 
-    const name = categoryForm.trim();
+  const name = categoryForm.trim();
 
-    if (!name) {
-      setAdminError('Введи название категории.');
-      return;
-    }
+  if (!name) {
+    setAdminError('Введи название категории.');
+    return;
+  }
 
-    setCategorySaving(true);
-    setAdminError('');
-    setAdminMessage('');
+  setCategorySaving(true);
+  setAdminError('');
+  setAdminMessage('');
 
+  try {
     let result;
 
     if (editingCategoryId) {
       result = await supabase
         .from('plant_categories')
-        .update({ name })
+        .update({
+          name,
+          slug: makeSlug(name)
+        })
         .eq('id', editingCategoryId);
     } else {
       const maxOrder = Math.max(
@@ -607,28 +611,54 @@ export default function App() {
         ...adminCategories.map(item => Number(item.sort_order) || 0)
       );
 
+      const baseSlug = makeSlug(name);
+
+      const { data: existingSlugs, error: slugError } = await supabase
+        .from('plant_categories')
+        .select('slug');
+
+      if (slugError) throw slugError;
+
+      const usedSlugs = new Set(
+        (existingSlugs || []).map(item => item.slug)
+      );
+
+      let slug = baseSlug;
+      let suffix = 2;
+
+      while (usedSlugs.has(slug)) {
+        slug = `${baseSlug}-${suffix}`;
+        suffix++;
+      }
+
       result = await supabase
         .from('plant_categories')
         .insert({
           name,
+          slug,
           sort_order: maxOrder + 1,
           is_active: true
         });
     }
 
-    if (result.error) {
-      setAdminError('Не удалось сохранить категорию: ' + result.error.message);
-      setCategorySaving(false);
-      return;
-    }
+    if (result.error) throw result.error;
 
     cancelEditCategory();
+
     await loadAdminData();
     await loadCatalog();
 
-    setAdminMessage('Категории обновлены.');
+    setAdminMessage('Категория сохранена.');
+  } catch (error) {
+    console.error(error);
+    setAdminError(
+      'Не удалось сохранить категорию: ' +
+      (error.message || 'неизвестная ошибка')
+    );
+  } finally {
     setCategorySaving(false);
   }
+}
 
   async function toggleCategory(item) {
     setAdminError('');
