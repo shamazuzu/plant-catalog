@@ -1,3 +1,4 @@
+import React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Leaf, Heart, SlidersHorizontal, Sprout } from 'lucide-react';
 import { supabase } from './supabase';
