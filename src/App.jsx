@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
@@ -81,6 +80,8 @@ export default function App() {
   const [authMessage, setAuthMessage] = useState('');
 
   const [adminOpen, setAdminOpen] = useState(false);
+  const [adminTab, setAdminTab] = useState('plants');
+
   const [adminOffers, setAdminOffers] = useState([]);
   const [adminPlants, setAdminPlants] = useState([]);
   const [adminCategories, setAdminCategories] = useState([]);
@@ -287,6 +288,7 @@ export default function App() {
     setSession(null);
     setIsAdmin(false);
     setAdminOpen(false);
+    setAdminTab('plants');
   }
 
   // Загрузка публичного каталога
@@ -397,6 +399,7 @@ export default function App() {
     setEditingCategoryId(item.id);
     setCategoryForm(item.name);
     setAdminError('');
+    setAdminMessage('');
   }
 
   function cancelEditCategory() {
@@ -456,6 +459,7 @@ export default function App() {
 
   async function toggleCategory(item) {
     setAdminError('');
+    setAdminMessage('');
 
     const { error } = await supabase
       .from('plant_categories')
@@ -473,10 +477,13 @@ export default function App() {
 
     await loadAdminData();
     await loadCatalog();
+
+    setAdminMessage('Статус категории изменён.');
   }
 
   async function deleteCategory(item) {
     setAdminError('');
+    setAdminMessage('');
 
     const { count, error: countError } = await supabase
       .from('plants')
@@ -511,10 +518,14 @@ export default function App() {
 
     await loadAdminData();
     await loadCatalog();
+
     setAdminMessage('Категория удалена.');
   }
 
   async function moveCategory(item, direction) {
+    setAdminError('');
+    setAdminMessage('');
+
     const sorted = [...adminCategories].sort(
       (a, b) => a.sort_order - b.sort_order
     );
@@ -579,6 +590,7 @@ export default function App() {
     setNewPhotos([]);
     setAdminMessage('');
     setAdminError('');
+    setAdminTab('plants');
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -712,6 +724,9 @@ export default function App() {
 
   // Скрыть или вернуть предложение
   async function changeOfferStatus(offer, status) {
+    setAdminError('');
+    setAdminMessage('');
+
     const { error } = await supabase
       .from('plant_offers')
       .update({ status })
@@ -755,8 +770,13 @@ export default function App() {
               <>
                 <button
                   onClick={() => {
-                    setAdminOpen(!adminOpen);
-                    startNew();
+                    if (adminOpen) {
+                      setAdminOpen(false);
+                    } else {
+                      setAdminTab('plants');
+                      setAdminOpen(true);
+                      startNew();
+                    }
                   }}
                   style={headerButton}
                 >
@@ -801,439 +821,477 @@ export default function App() {
             </button>
           </div>
 
-          {/* Управление категориями */}
-          <div style={adminPanel}>
-            <h3 style={{ marginTop: 0 }}>Категории растений</h3>
+          {/* Навигация по разделам */}
+          <div style={adminTabs}>
+            <button
+              onClick={() => {
+                setAdminTab('plants');
+                setAdminError('');
+                setAdminMessage('');
+              }}
+              style={adminTab === 'plants' ? activeTabButton : tabButton}
+            >
+              <Sprout size={16} />
+              Добавить растение
+            </button>
 
-            <p style={mutedText}>
-              Создавай категории, меняй их названия и порядок отображения.
-              Скрытые категории не видны посетителям каталога.
-            </p>
-
-            <form onSubmit={saveCategory}>
-              <label style={fieldLabel}>
-                {editingCategoryId ? 'Новое название категории' : 'Название новой категории'}
-              </label>
-
-              <div style={categoryFormRow}>
-                <input
-                  style={{ ...fieldInput, margin: 0, flex: 1 }}
-                  value={categoryForm}
-                  onChange={e => setCategoryForm(e.target.value)}
-                  placeholder="Например, Алоказии"
-                  required
-                />
-
-                <button
-                  type="submit"
-                  disabled={categorySaving}
-                  style={smallActionButton}
-                >
-                  <Save size={15} />
-                  {categorySaving
-                    ? 'Сохраняем…'
-                    : editingCategoryId
-                      ? 'Сохранить'
-                      : 'Добавить'}
-                </button>
-
-                {editingCategoryId && (
-                  <button
-                    type="button"
-                    style={iconButton}
-                    onClick={cancelEditCategory}
-                    title="Отмена"
-                  >
-                    <X size={17} />
-                  </button>
-                )}
-              </div>
-            </form>
-
-            <div style={{ marginTop: 18 }}>
-              {adminCategories.length === 0 ? (
-                <p className="empty">Категорий пока нет.</p>
-              ) : (
-                [...adminCategories]
-                  .sort((a, b) => a.sort_order - b.sort_order)
-                  .map((item, index, array) => (
-                    <div key={item.id} style={categoryRow}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <strong>{item.name}</strong>
-                        <div style={categoryStatus}>
-                          {item.is_active ? 'Видна в каталоге' : 'Скрыта'}
-                        </div>
-                      </div>
-
-                      <button
-                        style={iconButton}
-                        onClick={() => moveCategory(item, -1)}
-                        disabled={index === 0}
-                        title="Переместить вверх"
-                      >
-                        <ChevronUp size={17} />
-                      </button>
-
-                      <button
-                        style={iconButton}
-                        onClick={() => moveCategory(item, 1)}
-                        disabled={index === array.length - 1}
-                        title="Переместить вниз"
-                      >
-                        <ChevronDown size={17} />
-                      </button>
-
-                      <button
-                        style={iconButton}
-                        onClick={() => startEditCategory(item)}
-                        title="Переименовать"
-                      >
-                        <Pencil size={16} />
-                      </button>
-
-                      <button
-                        style={iconButton}
-                        onClick={() => toggleCategory(item)}
-                        title={item.is_active ? 'Скрыть' : 'Показать'}
-                      >
-                        {item.is_active
-                          ? <EyeOff size={16} />
-                          : <Eye size={16} />}
-                      </button>
-
-                      <button
-                        style={deleteButton}
-                        onClick={() => deleteCategory(item)}
-                        title="Удалить"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))
-              )}
-            </div>
-          </div>
-
-          <div style={adminPanel}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              gap: 12,
-              flexWrap: 'wrap'
-            }}>
-              <h3 style={{ margin: 0 }}>
-                {editingId ? 'Редактирование предложения' : 'Новое растение'}
-              </h3>
-
-              {editingId && (
-                <button style={headerButton} onClick={startNew}>
-                  <Plus size={15} /> Новое
-                </button>
-              )}
-            </div>
-
-            <form onSubmit={handleSaveOffer}>
-              {!editingId && (
-                <>
-                  <label style={fieldLabel}>
-                    Существующее растение (если уже добавлял)
-                  </label>
-
-                  <select
-                    style={fieldInput}
-                    value={form.plant_id}
-                    onChange={e =>
-                      setForm({ ...form, plant_id: e.target.value })
-                    }
-                  >
-                    <option value="">Создать новое растение</option>
-                    {adminPlants.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-
-                  {!form.plant_id && (
-                    <>
-                      <label style={fieldLabel}>Название растения *</label>
-                      <input
-                        style={fieldInput}
-                        required={!form.plant_id}
-                        value={form.plant_name}
-                        onChange={e =>
-                          setForm({ ...form, plant_name: e.target.value })
-                        }
-                        placeholder="Например, Алоказия Лоу Райдер"
-                      />
-
-                      <label style={fieldLabel}>Ботаническое название</label>
-                      <input
-                        style={fieldInput}
-                        value={form.botanical_name}
-                        onChange={e =>
-                          setForm({ ...form, botanical_name: e.target.value })
-                        }
-                        placeholder="Alocasia..."
-                      />
-
-                      <label style={fieldLabel}>Сорт / культивар</label>
-                      <input
-                        style={fieldInput}
-                        value={form.cultivar}
-                        onChange={e =>
-                          setForm({ ...form, cultivar: e.target.value })
-                        }
-                      />
-
-                      <label style={fieldLabel}>Категория</label>
-                      <select
-                        style={fieldInput}
-                        value={form.category_id}
-                        onChange={e =>
-                          setForm({ ...form, category_id: e.target.value })
-                        }
-                      >
-                        <option value="">Без категории</option>
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-
-                      <label style={fieldLabel}>Описание растения</label>
-                      <textarea
-                        style={fieldInput}
-                        rows="3"
-                        value={form.plant_description}
-                        onChange={e =>
-                          setForm({ ...form, plant_description: e.target.value })
-                        }
-                      />
-
-                      <label style={fieldLabel}>Уход</label>
-                      <textarea
-                        style={fieldInput}
-                        rows="3"
-                        value={form.care}
-                        onChange={e =>
-                          setForm({ ...form, care: e.target.value })
-                        }
-                      />
-                    </>
-                  )}
-                </>
-              )}
-
-              <div style={formGrid}>
-                <div>
-                  <label style={fieldLabel}>Название предложения</label>
-                  <input
-                    style={fieldInput}
-                    value={form.title}
-                    onChange={e => setForm({ ...form, title: e.target.value })}
-                    placeholder="Можно оставить пустым"
-                  />
-                </div>
-
-                <div>
-                  <label style={fieldLabel}>Размер / описание экземпляра</label>
-                  <input
-                    style={fieldInput}
-                    value={form.size_label}
-                    onChange={e =>
-                      setForm({ ...form, size_label: e.target.value })
-                    }
-                    placeholder="Например, 3 листа, горшок 9 см"
-                  />
-                </div>
-
-                <div>
-                  <label style={fieldLabel}>Цена, ₽ *</label>
-                  <input
-                    style={fieldInput}
-                    type="number"
-                    min="0"
-                    required
-                    value={form.price}
-                    onChange={e => setForm({ ...form, price: e.target.value })}
-                  />
-                </div>
-
-                <div>
-                  <label style={fieldLabel}>Количество</label>
-                  <input
-                    style={fieldInput}
-                    type="number"
-                    min="0"
-                    value={form.stock}
-                    disabled={form.is_individual}
-                    onChange={e => setForm({ ...form, stock: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <label style={{
-                ...fieldLabel,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 9
-              }}>
-                <input
-                  type="checkbox"
-                  checked={form.is_individual}
-                  onChange={e =>
-                    setForm({
-                      ...form,
-                      is_individual: e.target.checked,
-                      stock: e.target.checked ? '1' : form.stock
-                    })
-                  }
-                />
-                Это отдельный уникальный экземпляр
-              </label>
-
-              <label style={fieldLabel}>
-                Описание именно этого предложения
-              </label>
-              <textarea
-                style={fieldInput}
-                rows="3"
-                value={form.description_override}
-                onChange={e =>
-                  setForm({ ...form, description_override: e.target.value })
-                }
-                placeholder="Особенности конкретного растения"
-              />
-
-              <label style={fieldLabel}>
-                Ссылка на Avito (необязательно)
-              </label>
-              <input
-                style={fieldInput}
-                type="url"
-                value={form.avito_url}
-                onChange={e =>
-                  setForm({ ...form, avito_url: e.target.value })
-                }
-                placeholder="https://www.avito.ru/..."
-              />
-
-              <label style={fieldLabel}>Статус</label>
-              <select
-                style={fieldInput}
-                value={form.status}
-                onChange={e => setForm({ ...form, status: e.target.value })}
-              >
-                <option value="available">В наличии</option>
-                <option value="hidden">Скрыто</option>
-                <option value="sold">Продано</option>
-                <option value="draft">Черновик</option>
-              </select>
-
-              <label style={fieldLabel}>Фотографии</label>
-              <label style={uploadLabel}>
-                <ImagePlus size={18} /> Выбрать фотографии
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={e =>
-                    setNewPhotos(Array.from(e.target.files || []))
-                  }
-                  style={{ display: 'none' }}
-                />
-              </label>
-
-              {newPhotos.length > 0 && (
-                <p style={{ fontSize: 13, color: '#52634f' }}>
-                  Выбрано файлов: {newPhotos.length}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={saving}
-                style={submitButton}
-              >
-                <Save
-                  size={16}
-                  style={{ verticalAlign: 'middle', marginRight: 7 }}
-                />
-                {saving
-                  ? 'Сохраняем…'
-                  : editingId
-                    ? 'Сохранить изменения'
-                    : 'Добавить в каталог'}
-              </button>
-            </form>
+            <button
+              onClick={() => {
+                setAdminTab('categories');
+                setAdminError('');
+                setAdminMessage('');
+              }}
+              style={adminTab === 'categories' ? activeTabButton : tabButton}
+            >
+              <SlidersHorizontal size={16} />
+              Категории
+            </button>
           </div>
 
           {adminError && <p style={errorText}>{adminError}</p>}
           {adminMessage && <p style={successText}>{adminMessage}</p>}
 
-          <div style={{ marginTop: 30 }}>
-            <h3>Предложения в каталоге</h3>
+          {/* Вкладка: категории */}
+          {adminTab === 'categories' && (
+            <div style={adminPanel}>
+              <h3 style={{ marginTop: 0 }}>Категории растений</h3>
 
-            {adminOffers.length === 0 ? (
-              <p className="empty">Пока нет предложений.</p>
-            ) : (
-              adminOffers.map(o => (
-                <div key={o.id} style={offerRow}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
-                    <strong>{o.title || o.plants?.name || 'Растение'}</strong>
+              <p style={mutedText}>
+                Создавай категории, меняй их названия и порядок отображения.
+                Скрытые категории не видны посетителям каталога.
+              </p>
 
-                    <div style={{
-                      fontSize: 12,
-                      color: '#788575',
-                      marginTop: 4
-                    }}>
-                      {Number(o.price).toLocaleString('ru-RU')} ₽ · {o.stock} шт. · {
-                        o.status === 'available' ? 'В наличии' :
-                        o.status === 'sold' ? 'Продано' :
-                        o.status === 'hidden' ? 'Скрыто' : 'Черновик'
-                      }
-                    </div>
+              <form onSubmit={saveCategory}>
+                <label style={fieldLabel}>
+                  {editingCategoryId
+                    ? 'Новое название категории'
+                    : 'Название новой категории'}
+                </label>
 
-                    {o.avito_url && (
-                      <a
-                        href={o.avito_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ fontSize: 12, color: '#52634f' }}
-                      >
-                        Открыть Avito
-                      </a>
-                    )}
-                  </div>
+                <div style={categoryFormRow}>
+                  <input
+                    style={{ ...fieldInput, margin: 0, flex: 1 }}
+                    value={categoryForm}
+                    onChange={e => setCategoryForm(e.target.value)}
+                    placeholder="Например, Алоказии"
+                    required
+                  />
 
                   <button
-                    style={iconButton}
-                    onClick={() => startEdit(o)}
-                    title="Редактировать"
+                    type="submit"
+                    disabled={categorySaving}
+                    style={smallActionButton}
                   >
-                    <Pencil size={16} />
+                    <Save size={15} />
+                    {categorySaving
+                      ? 'Сохраняем…'
+                      : editingCategoryId
+                        ? 'Сохранить'
+                        : 'Добавить'}
                   </button>
 
-                  {o.status === 'hidden' ? (
+                  {editingCategoryId && (
                     <button
+                      type="button"
                       style={iconButton}
-                      onClick={() => changeOfferStatus(o, 'available')}
-                      title="Показать"
+                      onClick={cancelEditCategory}
+                      title="Отмена"
                     >
-                      <Eye size={16} />
-                    </button>
-                  ) : (
-                    <button
-                      style={iconButton}
-                      onClick={() => changeOfferStatus(o, 'hidden')}
-                      title="Скрыть"
-                    >
-                      <EyeOff size={16} />
+                      <X size={17} />
                     </button>
                   )}
                 </div>
-              ))
-            )}
-          </div>
+              </form>
+
+              <div style={{ marginTop: 18 }}>
+                {adminCategories.length === 0 ? (
+                  <p className="empty">Категорий пока нет.</p>
+                ) : (
+                  [...adminCategories]
+                    .sort((a, b) => a.sort_order - b.sort_order)
+                    .map((item, index, array) => (
+                      <div key={item.id} style={categoryRow}>
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <strong>{item.name}</strong>
+                          <div style={categoryStatus}>
+                            {item.is_active ? 'Видна в каталоге' : 'Скрыта'}
+                          </div>
+                        </div>
+
+                        <button
+                          style={iconButton}
+                          onClick={() => moveCategory(item, -1)}
+                          disabled={index === 0}
+                          title="Переместить вверх"
+                        >
+                          <ChevronUp size={17} />
+                        </button>
+
+                        <button
+                          style={iconButton}
+                          onClick={() => moveCategory(item, 1)}
+                          disabled={index === array.length - 1}
+                          title="Переместить вниз"
+                        >
+                          <ChevronDown size={17} />
+                        </button>
+
+                        <button
+                          style={iconButton}
+                          onClick={() => startEditCategory(item)}
+                          title="Переименовать"
+                        >
+                          <Pencil size={16} />
+                        </button>
+
+                        <button
+                          style={iconButton}
+                          onClick={() => toggleCategory(item)}
+                          title={item.is_active ? 'Скрыть' : 'Показать'}
+                        >
+                          {item.is_active
+                            ? <EyeOff size={16} />
+                            : <Eye size={16} />}
+                        </button>
+
+                        <button
+                          style={deleteButton}
+                          onClick={() => deleteCategory(item)}
+                          title="Удалить"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Вкладка: добавление и редактирование растений */}
+          {adminTab === 'plants' && (
+            <>
+              <div style={adminPanel}>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  flexWrap: 'wrap'
+                }}>
+                  <h3 style={{ margin: 0 }}>
+                    {editingId
+                      ? 'Редактирование предложения'
+                      : 'Новое растение'}
+                  </h3>
+
+                  {editingId && (
+                    <button style={headerButton} onClick={startNew}>
+                      <Plus size={15} /> Новое
+                    </button>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveOffer}>
+                  {!editingId && (
+                    <>
+                      <label style={fieldLabel}>
+                        Существующее растение (если уже добавлял)
+                      </label>
+
+                      <select
+                        style={fieldInput}
+                        value={form.plant_id}
+                        onChange={e =>
+                          setForm({ ...form, plant_id: e.target.value })
+                        }
+                      >
+                        <option value="">Создать новое растение</option>
+                        {adminPlants.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+
+                      {!form.plant_id && (
+                        <>
+                          <label style={fieldLabel}>Название растения *</label>
+                          <input
+                            style={fieldInput}
+                            required={!form.plant_id}
+                            value={form.plant_name}
+                            onChange={e =>
+                              setForm({ ...form, plant_name: e.target.value })
+                            }
+                            placeholder="Например, Алоказия Лоу Райдер"
+                          />
+
+                          <label style={fieldLabel}>Ботаническое название</label>
+                          <input
+                            style={fieldInput}
+                            value={form.botanical_name}
+                            onChange={e =>
+                              setForm({ ...form, botanical_name: e.target.value })
+                            }
+                            placeholder="Alocasia..."
+                          />
+
+                          <label style={fieldLabel}>Сорт / культивар</label>
+                          <input
+                            style={fieldInput}
+                            value={form.cultivar}
+                            onChange={e =>
+                              setForm({ ...form, cultivar: e.target.value })
+                            }
+                          />
+
+                          <label style={fieldLabel}>Категория</label>
+                          <select
+                            style={fieldInput}
+                            value={form.category_id}
+                            onChange={e =>
+                              setForm({ ...form, category_id: e.target.value })
+                            }
+                          >
+                            <option value="">Без категории</option>
+                            {categories.map(c => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+
+                          <label style={fieldLabel}>Описание растения</label>
+                          <textarea
+                            style={fieldInput}
+                            rows="3"
+                            value={form.plant_description}
+                            onChange={e =>
+                              setForm({ ...form, plant_description: e.target.value })
+                            }
+                          />
+
+                          <label style={fieldLabel}>Уход</label>
+                          <textarea
+                            style={fieldInput}
+                            rows="3"
+                            value={form.care}
+                            onChange={e =>
+                              setForm({ ...form, care: e.target.value })
+                            }
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  <div style={formGrid}>
+                    <div>
+                      <label style={fieldLabel}>Название предложения</label>
+                      <input
+                        style={fieldInput}
+                        value={form.title}
+                        onChange={e => setForm({ ...form, title: e.target.value })}
+                        placeholder="Можно оставить пустым"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabel}>Размер / описание экземпляра</label>
+                      <input
+                        style={fieldInput}
+                        value={form.size_label}
+                        onChange={e =>
+                          setForm({ ...form, size_label: e.target.value })
+                        }
+                        placeholder="Например, 3 листа, горшок 9 см"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabel}>Цена, ₽ *</label>
+                      <input
+                        style={fieldInput}
+                        type="number"
+                        min="0"
+                        required
+                        value={form.price}
+                        onChange={e => setForm({ ...form, price: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabel}>Количество</label>
+                      <input
+                        style={fieldInput}
+                        type="number"
+                        min="0"
+                        value={form.stock}
+                        disabled={form.is_individual}
+                        onChange={e => setForm({ ...form, stock: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <label style={{
+                    ...fieldLabel,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={form.is_individual}
+                      onChange={e =>
+                        setForm({
+                          ...form,
+                          is_individual: e.target.checked,
+                          stock: e.target.checked ? '1' : form.stock
+                        })
+                      }
+                    />
+                    Это отдельный уникальный экземпляр
+                  </label>
+
+                  <label style={fieldLabel}>
+                    Описание именно этого предложения
+                  </label>
+                  <textarea
+                    style={fieldInput}
+                    rows="3"
+                    value={form.description_override}
+                    onChange={e =>
+                      setForm({ ...form, description_override: e.target.value })
+                    }
+                    placeholder="Особенности конкретного растения"
+                  />
+
+                  <label style={fieldLabel}>
+                    Ссылка на Avito (необязательно)
+                  </label>
+                  <input
+                    style={fieldInput}
+                    type="url"
+                    value={form.avito_url}
+                    onChange={e =>
+                      setForm({ ...form, avito_url: e.target.value })
+                    }
+                    placeholder="https://www.avito.ru/..."
+                  />
+
+                  <label style={fieldLabel}>Статус</label>
+                  <select
+                    style={fieldInput}
+                    value={form.status}
+                    onChange={e => setForm({ ...form, status: e.target.value })}
+                  >
+                    <option value="available">В наличии</option>
+                    <option value="hidden">Скрыто</option>
+                    <option value="sold">Продано</option>
+                    <option value="draft">Черновик</option>
+                  </select>
+
+                  <label style={fieldLabel}>Фотографии</label>
+                  <label style={uploadLabel}>
+                    <ImagePlus size={18} /> Выбрать фотографии
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={e =>
+                        setNewPhotos(Array.from(e.target.files || []))
+                      }
+                      style={{ display: 'none' }}
+                    />
+                  </label>
+
+                  {newPhotos.length > 0 && (
+                    <p style={{ fontSize: 13, color: '#52634f' }}>
+                      Выбрано файлов: {newPhotos.length}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    style={submitButton}
+                  >
+                    <Save
+                      size={16}
+                      style={{ verticalAlign: 'middle', marginRight: 7 }}
+                    />
+                    {saving
+                      ? 'Сохраняем…'
+                      : editingId
+                        ? 'Сохранить изменения'
+                        : 'Добавить в каталог'}
+                  </button>
+                </form>
+              </div>
+
+              <div style={{ marginTop: 30 }}>
+                <h3>Предложения в каталоге</h3>
+
+                {adminOffers.length === 0 ? (
+                  <p className="empty">Пока нет предложений.</p>
+                ) : (
+                  adminOffers.map(o => (
+                    <div key={o.id} style={offerRow}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong>{o.title || o.plants?.name || 'Растение'}</strong>
+
+                        <div style={{
+                          fontSize: 12,
+                          color: '#788575',
+                          marginTop: 4
+                        }}>
+                          {Number(o.price).toLocaleString('ru-RU')} ₽ · {o.stock} шт. · {
+                            o.status === 'available' ? 'В наличии' :
+                            o.status === 'sold' ? 'Продано' :
+                            o.status === 'hidden' ? 'Скрыто' : 'Черновик'
+                          }
+                        </div>
+
+                        {o.avito_url && (
+                          <a
+                            href={o.avito_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ fontSize: 12, color: '#52634f' }}
+                          >
+                            Открыть Avito
+                          </a>
+                        )}
+                      </div>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => startEdit(o)}
+                        title="Редактировать"
+                      >
+                        <Pencil size={16} />
+                      </button>
+
+                      {o.status === 'hidden' ? (
+                        <button
+                          style={iconButton}
+                          onClick={() => changeOfferStatus(o, 'available')}
+                          title="Показать"
+                        >
+                          <Eye size={16} />
+                        </button>
+                      ) : (
+                        <button
+                          style={iconButton}
+                          onClick={() => changeOfferStatus(o, 'hidden')}
+                          title="Скрыть"
+                        >
+                          <EyeOff size={16} />
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
         </main>
       ) : (
         <>
@@ -1561,6 +1619,36 @@ const headerButton = {
   color: '#405c43',
   cursor: 'pointer',
   fontSize: 12
+};
+
+const adminTabs = {
+  display: 'flex',
+  gap: 10,
+  flexWrap: 'wrap',
+  marginTop: 22,
+  marginBottom: 8,
+  borderBottom: '1px solid #e3e8df',
+  paddingBottom: 12
+};
+
+const tabButton = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '12px 16px',
+  border: '1px solid #dfe4d9',
+  borderRadius: 6,
+  background: '#fff',
+  color: '#52634f',
+  cursor: 'pointer',
+  fontSize: 13
+};
+
+const activeTabButton = {
+  ...tabButton,
+  background: '#405c43',
+  borderColor: '#405c43',
+  color: '#fff'
 };
 
 const modalBackdrop = {
