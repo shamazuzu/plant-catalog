@@ -1103,7 +1103,7 @@ export default function App() {
           </main>
 
           <footer>
-            © {new Date().getFullYear()} Зелёная комната
+            © {new Date().getFullYear()} Kind of Green
             <span>Выращено с заботой</span>
           </footer>
         </>
