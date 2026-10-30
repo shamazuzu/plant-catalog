@@ -2414,6 +2414,14 @@ const detailPhoto = {
   justifyContent: 'center'
 };
 
+const detailTitle = {
+  fontSize: 32,
+  fontWeight: 700,
+  lineHeight: 1.15,
+  margin: '12px 0',
+  color: '#24352b'
+};
+
 const detailPhotoImage = {
   width: '100%',
   height: '100%',
