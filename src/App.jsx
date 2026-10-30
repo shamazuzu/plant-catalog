@@ -6,61 +6,170 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 
+const emptyForm = {
+  plant_id: '',
+  plant_name: '',
+  botanical_name: '',
+  cultivar: '',
+  category_id: '',
+  plant_description: '',
+  care: '',
+  pot_diameter: '',
+  height_min: '',
+  height_max: '',
+  price: '',
+  stock: '1',
+  description_override: '',
+  avito_url: '',
+  status: 'available'
+};
+
+function getPhotoUrl(path) {
+  if (!path || !supabase) return '';
+  return supabase.storage.from('plant-photos').getPublicUrl(path).data.publicUrl;
+}
+
+function sortVariants(variants) {
+  return [...variants].sort((a, b) => {
+    const da = Number(a.pot_diameter) || 0;
+    const db = Number(b.pot_diameter) || 0;
+    return da - db;
+  });
+}
+
+function formatPrice(value) {
+  return Number(value || 0).toLocaleString('ru-RU') + ' ₽';
+}
+
+function getHeight(variant) {
+  if (variant.height_min && variant.height_max) {
+    return `${variant.height_min}–${variant.height_max} см`;
+  }
+  if (variant.height_min) return `от ${variant.height_min} см`;
+  if (variant.height_max) return `до ${variant.height_max} см`;
+  return '';
+}
+
+function mapPublicPlants(rows) {
+  const grouped = new Map();
+
+  (rows || []).forEach(offer => {
+    const plant = offer.plants;
+    if (!plant || !plant.is_active) return;
+
+    if (!grouped.has(plant.id)) {
+      grouped.set(plant.id, {
+        id: plant.id,
+        name: plant.name,
+        botanical_name: plant.botanical_name,
+        cultivar: plant.cultivar,
+        category: plant.plant_categories?.name || 'Прочие растения',
+        description: plant.description || '',
+        care: plant.care || '',
+        variants: []
+      });
+    }
+
+    const photos = (offer.offer_photos || [])
+      .slice()
+      .sort((a, b) => a.sort_order - b.sort_order);
+
+    grouped.get(plant.id).variants.push({
+      id: offer.id,
+      pot_diameter: offer.pot_diameter,
+      height_min: offer.height_min,
+      height_max: offer.height_max,
+      price: offer.price,
+      stock: offer.stock,
+      status: offer.status,
+      description: offer.description_override || '',
+      avito_url: offer.avito_url,
+      photos
+    });
+  });
+
+  return [...grouped.values()]
+    .map(plant => ({
+      ...plant,
+      variants: sortVariants(plant.variants)
+    }))
+    .filter(plant =>
+      plant.variants.some(v =>
+        v.status === 'available' && Number(v.stock) > 0
+      )
+    );
+}
+
 const demoPlants = [
   {
     id: 'demo-1',
     name: 'Алоказия Лоу Райдер',
     botanical_name: 'Alocasia',
     category: 'Алоказии',
-    price: 1200,
-    stock: 1,
-    description: 'Компактная алоказия с выразительной листвой.'
+    description: 'Компактная алоказия с выразительной листвой.',
+    variants: [
+      {
+        id: 'demo-1a',
+        pot_diameter: 8,
+        height_min: 12,
+        height_max: 16,
+        price: 1200,
+        stock: 1,
+        status: 'available',
+        photos: []
+      }
+    ]
   },
   {
     id: 'demo-2',
     name: 'Замиокулькас Блэк',
     botanical_name: 'Zamioculcas zamiifolia',
     category: 'Замиокулькасы',
-    price: 900,
-    stock: 2,
-    description: 'Неприхотливое растение с тёмными листьями.'
+    description: 'Неприхотливое растение с тёмными листьями.',
+    variants: [
+      {
+        id: 'demo-2a',
+        pot_diameter: 9,
+        height_min: 15,
+        height_max: 20,
+        price: 900,
+        stock: 2,
+        status: 'available',
+        photos: []
+      }
+    ]
   },
   {
     id: 'demo-3',
     name: 'Алоказия Полли',
     botanical_name: 'Alocasia × amazonica',
     category: 'Алоказии',
-    price: 1500,
-    stock: 1,
-    description: 'Контрастные листья с выразительными прожилками.'
+    description: 'Контрастные листья с выразительными прожилками.',
+    variants: [
+      {
+        id: 'demo-3a',
+        pot_diameter: 10,
+        height_min: 20,
+        height_max: 25,
+        price: 1500,
+        stock: 1,
+        status: 'available',
+        photos: []
+      }
+    ]
   }
 ];
 
-const emptyForm = {
-  plant_id: '',
-  title: '',
-  size_label: '',
-  price: '',
-  stock: '1',
-  is_individual: true,
-  description_override: '',
-  avito_url: '',
-  status: 'available',
-  plant_name: '',
-  botanical_name: '',
-  cultivar: '',
-  category_id: '',
-  plant_description: '',
-  care: ''
-};
-
 export default function App() {
-  const [offers, setOffers] = useState([]);
+  const [plants, setPlants] = useState([]);
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState('Все растения');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
+
+  const [selectedPlantId, setSelectedPlantId] = useState(null);
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
 
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -97,7 +206,13 @@ export default function App() {
   const [adminMessage, setAdminMessage] = useState('');
   const [adminError, setAdminError] = useState('');
 
-  // Проверка прав администратора
+  const selectedPlant = plants.find(p => p.id === selectedPlantId);
+
+  const selectedVariant = selectedPlant
+    ? selectedPlant.variants.find(v => v.id === selectedVariantId) ||
+      sortVariants(selectedPlant.variants)[0]
+    : null;
+
   async function checkAdmin(user) {
     if (!user || !supabase) {
       setIsAdmin(false);
@@ -124,15 +239,18 @@ export default function App() {
       return;
     }
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const currentSession = data.session;
-      setSession(currentSession);
+    let mounted = true;
 
-      if (currentSession?.user) {
-        await checkAdmin(currentSession.user);
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!mounted) return;
+
+      setSession(data.session);
+
+      if (data.session?.user) {
+        await checkAdmin(data.session.user);
       }
 
-      setAuthReady(true);
+      if (mounted) setAuthReady(true);
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange(
@@ -155,7 +273,10 @@ export default function App() {
       }
     );
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   // Вход
@@ -281,7 +402,6 @@ export default function App() {
     setAuthMessage('Пароль успешно изменён. Теперь можешь войти.');
   }
 
-  // Выход
   async function handleLogout() {
     if (supabase) await supabase.auth.signOut();
 
@@ -294,7 +414,8 @@ export default function App() {
   // Загрузка публичного каталога
   async function loadCatalog() {
     if (!supabase) {
-      setOffers(demoPlants);
+      setPlants(demoPlants);
+      setCategories([]);
       setUsingDemo(true);
       setLoading(false);
       return;
@@ -309,40 +430,30 @@ export default function App() {
 
       supabase
         .from('plant_offers')
-        .select(
-          'id,title,size_label,price,stock,status,description_override,plants!inner(id,name,botanical_name,category_id,is_active,plant_categories(name)),offer_photos(storage_path,sort_order)'
-        )
-        .eq('status', 'available')
-        .gt('stock', 0)
+        .select(`
+          id,plant_id,price,stock,status,
+          pot_diameter,height_min,height_max,
+          description_override,avito_url,
+          plants!inner(
+            id,name,botanical_name,cultivar,
+            description,care,category_id,is_active,
+            plant_categories(name)
+          ),
+          offer_photos(storage_path,sort_order)
+        `)
+        .in('status', ['available', 'sold'])
         .order('created_at', { ascending: false })
     ]);
 
     if (cats) setCategories(cats);
 
     if (error) {
-      console.error(error);
-      setOffers(demoPlants);
+      console.error('Ошибка загрузки каталога:', error);
+      setPlants(demoPlants);
       setUsingDemo(true);
     } else {
       setUsingDemo(false);
-
-      const mapped = (data || [])
-        .filter(o => o.plants?.is_active)
-        .map(o => ({
-          id: o.id,
-          name: o.title || o.plants?.name || 'Растение',
-          botanical_name: o.plants?.botanical_name,
-          category: o.plants?.plant_categories?.name || 'Прочие растения',
-          price: o.price,
-          stock: o.stock,
-          status: o.status,
-          description: o.description_override || '',
-          photo: o.offer_photos
-            ?.sort((a, b) => a.sort_order - b.sort_order)?.[0]
-            ?.storage_path
-        }));
-
-      setOffers(mapped);
+      setPlants(mapPublicPlants(data || []));
     }
 
     setLoading(false);
@@ -352,23 +463,65 @@ export default function App() {
     loadCatalog();
   }, []);
 
-  // Загрузка данных для админки
+  // Поддержка ссылок вида #/plant/ID
+  useEffect(() => {
+    function readHash() {
+      const match = window.location.hash.match(/^#\/plant\/([^/]+)$/);
+
+      if (match) {
+        setSelectedPlantId(decodeURIComponent(match[1]));
+      } else {
+        setSelectedPlantId(null);
+        setSelectedVariantId(null);
+      }
+    }
+
+    readHash();
+    window.addEventListener('hashchange', readHash);
+
+    return () => window.removeEventListener('hashchange', readHash);
+  }, []);
+
+  function openPlant(plant) {
+    setSelectedPlantId(plant.id);
+    setSelectedVariantId(null);
+    window.location.hash = `/plant/${encodeURIComponent(plant.id)}`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function closePlant() {
+    window.location.hash = '';
+    setSelectedPlantId(null);
+    setSelectedVariantId(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // Загрузка данных админки
   async function loadAdminData() {
     if (!supabase) return;
 
     const [
-      { data: plants, error: plantsError },
+      { data: plantsData, error: plantsError },
       { data: offersData, error: offersError },
       { data: categoryData, error: categoryError }
     ] = await Promise.all([
       supabase
         .from('plants')
-        .select('id,name,botanical_name,cultivar,category_id,description,care,is_active,plant_categories(name)')
+        .select(`
+          id,name,botanical_name,cultivar,category_id,
+          description,care,is_active,plant_categories(name)
+        `)
         .order('created_at', { ascending: false }),
 
       supabase
         .from('plant_offers')
-        .select('id,plant_id,title,size_label,price,stock,is_individual,status,description_override,avito_url,qr_code,plants(name,botanical_name),offer_photos(storage_path,sort_order)')
+        .select(`
+          id,plant_id,title,size_label,price,stock,
+          is_individual,status,description_override,avito_url,
+          pot_diameter,height_min,height_max,qr_code,
+          plants(name,botanical_name),
+          offer_photos(storage_path,sort_order)
+        `)
         .order('created_at', { ascending: false }),
 
       supabase
@@ -385,7 +538,7 @@ export default function App() {
       return;
     }
 
-    setAdminPlants(plants || []);
+    setAdminPlants(plantsData || []);
     setAdminOffers(offersData || []);
     setAdminCategories(categoryData || []);
   }
@@ -551,9 +704,7 @@ export default function App() {
     const failed = updates.find(result => result.error);
 
     if (failed) {
-      setAdminError(
-        'Не удалось изменить порядок: ' + failed.error.message
-      );
+      setAdminError('Не удалось изменить порядок: ' + failed.error.message);
       return;
     }
 
@@ -561,7 +712,7 @@ export default function App() {
     await loadCatalog();
   }
 
-  // Новое предложение
+  // Новое предложение / новый размер
   function startNew() {
     setEditingId(null);
     setForm(emptyForm);
@@ -570,18 +721,18 @@ export default function App() {
     setAdminError('');
   }
 
-  // Редактирование предложения
+  // Редактирование существующего размера
   function startEdit(offer) {
     setEditingId(offer.id);
 
     setForm({
       ...emptyForm,
       plant_id: offer.plant_id || '',
-      title: offer.title || '',
-      size_label: offer.size_label || '',
+      pot_diameter: offer.pot_diameter ?? '',
+      height_min: offer.height_min ?? '',
+      height_max: offer.height_max ?? '',
       price: offer.price ?? '',
-      stock: String(offer.stock ?? 1),
-      is_individual: Boolean(offer.is_individual),
+      stock: String(offer.stock ?? 0),
       description_override: offer.description_override || '',
       avito_url: offer.avito_url || '',
       status: offer.status || 'available'
@@ -595,7 +746,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // Сохранение предложения и фотографий
+  // Сохранение размера и фотографий
   async function handleSaveOffer(event) {
     event.preventDefault();
 
@@ -614,6 +765,25 @@ export default function App() {
 
     if (form.price === '' || Number(form.price) < 0) {
       setAdminError('Укажи корректную цену.');
+      return;
+    }
+
+    if (form.stock === '' || Number(form.stock) < 0) {
+      setAdminError('Укажи количество экземпляров.');
+      return;
+    }
+
+    if (form.pot_diameter !== '' && Number(form.pot_diameter) <= 0) {
+      setAdminError('Диаметр горшка должен быть больше нуля.');
+      return;
+    }
+
+    if (
+      form.height_min !== '' &&
+      form.height_max !== '' &&
+      Number(form.height_max) < Number(form.height_min)
+    ) {
+      setAdminError('Максимальная высота не может быть меньше минимальной.');
       return;
     }
 
@@ -643,13 +813,18 @@ export default function App() {
 
       const payload = {
         plant_id: plantId,
-        title: form.title.trim() || null,
-        size_label: form.size_label.trim() || null,
         price: Number(form.price),
-        stock: form.is_individual
-          ? 1
-          : Math.max(0, Number(form.stock) || 0),
-        is_individual: form.is_individual,
+        stock: Math.max(0, Number(form.stock) || 0),
+        is_individual: false,
+        pot_diameter: form.pot_diameter === ''
+          ? null
+          : Number(form.pot_diameter),
+        height_min: form.height_min === ''
+          ? null
+          : Number(form.height_min),
+        height_max: form.height_max === ''
+          ? null
+          : Number(form.height_max),
         status: form.status,
         description_override: form.description_override.trim() || null,
         avito_url: form.avito_url.trim() || null
@@ -702,7 +877,7 @@ export default function App() {
       setAdminMessage(
         editingId
           ? 'Изменения сохранены.'
-          : 'Растение добавлено в каталог.'
+          : 'Размер добавлен в каталог.'
       );
 
       setEditingId(null);
@@ -722,7 +897,6 @@ export default function App() {
     }
   }
 
-  // Скрыть или вернуть предложение
   async function changeOfferStatus(offer, status) {
     setAdminError('');
     setAdminMessage('');
@@ -743,19 +917,22 @@ export default function App() {
 
   const visible = useMemo(
     () =>
-      offers.filter(p =>
+      plants.filter(p =>
         (category === 'Все растения' || p.category === category) &&
-        `${p.name} ${p.botanical_name || ''}`
+        `${p.name} ${p.botanical_name || ''} ${p.cultivar || ''}`
           .toLowerCase()
           .includes(query.toLowerCase())
       ),
-    [offers, category, query]
+    [plants, category, query]
   );
 
   return (
     <div className="page">
       <header className="topbar">
-        <a className="brand" href="#">
+        <a className="brand" href="#" onClick={() => {
+          setSelectedPlantId(null);
+          setSelectedVariantId(null);
+        }}>
           <span className="brand-icon"><Leaf size={21} /></span>
           <span>
             <span>Kind</span> <span className="brand-light">of</span> <span>Green</span>
@@ -821,7 +998,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Навигация по разделам */}
           <div style={adminTabs}>
             <button
               onClick={() => {
@@ -832,7 +1008,7 @@ export default function App() {
               style={adminTab === 'plants' ? activeTabButton : tabButton}
             >
               <Sprout size={16} />
-              Добавить растение
+              Растения и размеры
             </button>
 
             <button
@@ -851,7 +1027,6 @@ export default function App() {
           {adminError && <p style={errorText}>{adminError}</p>}
           {adminMessage && <p style={successText}>{adminMessage}</p>}
 
-          {/* Вкладка: категории */}
           {adminTab === 'categories' && (
             <div style={adminPanel}>
               <h3 style={{ marginTop: 0 }}>Категории растений</h3>
@@ -968,7 +1143,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Вкладка: добавление и редактирование растений */}
           {adminTab === 'plants' && (
             <>
               <div style={adminPanel}>
@@ -980,9 +1154,7 @@ export default function App() {
                   flexWrap: 'wrap'
                 }}>
                   <h3 style={{ margin: 0 }}>
-                    {editingId
-                      ? 'Редактирование предложения'
-                      : 'Новое растение'}
+                    {editingId ? 'Редактирование размера' : 'Новое растение или размер'}
                   </h3>
 
                   {editingId && (
@@ -996,7 +1168,7 @@ export default function App() {
                   {!editingId && (
                     <>
                       <label style={fieldLabel}>
-                        Существующее растение (если уже добавлял)
+                        Существующее растение
                       </label>
 
                       <select
@@ -1017,7 +1189,7 @@ export default function App() {
                           <label style={fieldLabel}>Название растения *</label>
                           <input
                             style={fieldInput}
-                            required={!form.plant_id}
+                            required
                             value={form.plant_name}
                             onChange={e =>
                               setForm({ ...form, plant_name: e.target.value })
@@ -1082,26 +1254,53 @@ export default function App() {
                     </>
                   )}
 
+                  <h4 style={{ margin: '24px 0 8px', color: '#405c43' }}>
+                    Параметры размера
+                  </h4>
+
                   <div style={formGrid}>
                     <div>
-                      <label style={fieldLabel}>Название предложения</label>
+                      <label style={fieldLabel}>Диаметр горшка, см</label>
                       <input
                         style={fieldInput}
-                        value={form.title}
-                        onChange={e => setForm({ ...form, title: e.target.value })}
-                        placeholder="Можно оставить пустым"
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={form.pot_diameter}
+                        onChange={e =>
+                          setForm({ ...form, pot_diameter: e.target.value })
+                        }
+                        placeholder="Например, 8"
                       />
                     </div>
 
                     <div>
-                      <label style={fieldLabel}>Размер / описание экземпляра</label>
+                      <label style={fieldLabel}>Минимальная высота, см</label>
                       <input
                         style={fieldInput}
-                        value={form.size_label}
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={form.height_min}
                         onChange={e =>
-                          setForm({ ...form, size_label: e.target.value })
+                          setForm({ ...form, height_min: e.target.value })
                         }
-                        placeholder="Например, 3 листа, горшок 9 см"
+                        placeholder="Например, 12"
+                      />
+                    </div>
+
+                    <div>
+                      <label style={fieldLabel}>Максимальная высота, см</label>
+                      <input
+                        style={fieldInput}
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={form.height_max}
+                        onChange={e =>
+                          setForm({ ...form, height_max: e.target.value })
+                        }
+                        placeholder="Например, 16"
                       />
                     </div>
 
@@ -1123,35 +1322,15 @@ export default function App() {
                         style={fieldInput}
                         type="number"
                         min="0"
+                        step="1"
                         value={form.stock}
-                        disabled={form.is_individual}
                         onChange={e => setForm({ ...form, stock: e.target.value })}
                       />
                     </div>
                   </div>
 
-                  <label style={{
-                    ...fieldLabel,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 9
-                  }}>
-                    <input
-                      type="checkbox"
-                      checked={form.is_individual}
-                      onChange={e =>
-                        setForm({
-                          ...form,
-                          is_individual: e.target.checked,
-                          stock: e.target.checked ? '1' : form.stock
-                        })
-                      }
-                    />
-                    Это отдельный уникальный экземпляр
-                  </label>
-
                   <label style={fieldLabel}>
-                    Описание именно этого предложения
+                    Особенности конкретного размера
                   </label>
                   <textarea
                     style={fieldInput}
@@ -1160,12 +1339,10 @@ export default function App() {
                     onChange={e =>
                       setForm({ ...form, description_override: e.target.value })
                     }
-                    placeholder="Особенности конкретного растения"
+                    placeholder="Например, крупный клубень, 4 листа..."
                   />
 
-                  <label style={fieldLabel}>
-                    Ссылка на Avito (необязательно)
-                  </label>
+                  <label style={fieldLabel}>Ссылка на Avito (необязательно)</label>
                   <input
                     style={fieldInput}
                     type="url"
@@ -1188,7 +1365,7 @@ export default function App() {
                     <option value="draft">Черновик</option>
                   </select>
 
-                  <label style={fieldLabel}>Фотографии</label>
+                  <label style={fieldLabel}>Фотографии этого размера</label>
                   <label style={uploadLabel}>
                     <ImagePlus size={18} /> Выбрать фотографии
                     <input
@@ -1227,7 +1404,7 @@ export default function App() {
               </div>
 
               <div style={{ marginTop: 30 }}>
-                <h3>Предложения в каталоге</h3>
+                <h3>Размеры и предложения</h3>
 
                 {adminOffers.length === 0 ? (
                   <p className="empty">Пока нет предложений.</p>
@@ -1235,18 +1412,23 @@ export default function App() {
                   adminOffers.map(o => (
                     <div key={o.id} style={offerRow}>
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <strong>{o.title || o.plants?.name || 'Растение'}</strong>
+                        <strong>{o.plants?.name || 'Растение'}</strong>
 
                         <div style={{
                           fontSize: 12,
                           color: '#788575',
                           marginTop: 4
                         }}>
-                          {Number(o.price).toLocaleString('ru-RU')} ₽ · {o.stock} шт. · {
-                            o.status === 'available' ? 'В наличии' :
+                          {o.pot_diameter
+                            ? `Горшок ${o.pot_diameter} см`
+                            : 'Диаметр не указан'}
+                          {getHeight(o) ? ` · ${getHeight(o)}` : ''}
+                          {' · '}{formatPrice(o.price)}
+                          {' · '}{o.stock} шт.
+                          {' · '}
+                          {o.status === 'available' ? 'В наличии' :
                             o.status === 'sold' ? 'Продано' :
-                            o.status === 'hidden' ? 'Скрыто' : 'Черновик'
-                          }
+                              o.status === 'hidden' ? 'Скрыто' : 'Черновик'}
                         </div>
 
                         {o.avito_url && (
@@ -1296,136 +1478,292 @@ export default function App() {
       ) : (
         <>
           <main>
-            <section className="hero">
-              <div className="hero-copy">
-                <p className="eyebrow">
-                  <Sprout size={15} /> РАСТЕНИЯ С ХАРАКТЕРОМ
-                </p>
+            {selectedPlant ? (
+              <section className="catalog">
+                <button style={backButton} onClick={closePlant}>
+                  <ArrowLeft size={16} /> Назад в каталог
+                </button>
 
-                <h1>
-                  Найдите своё<br />
-                  <em>зелёное</em> растение
-                </h1>
-
-                <p className="hero-sub">
-                  Домашние растения, выращенные с вниманием и заботой.
-                </p>
-              </div>
-
-              <div className="hero-art" aria-hidden="true">
-                <div className="sun"></div>
-                <div className="plant-shape leaf-a"></div>
-                <div className="plant-shape leaf-b"></div>
-                <div className="plant-shape leaf-c"></div>
-                <div className="pot"></div>
-              </div>
-            </section>
-
-            <section className="catalog">
-              <div className="section-heading">
-                <div>
-                  <p className="eyebrow">КОЛЛЕКЦИЯ</p>
-                  <h2>Растения в наличии</h2>
-                </div>
-
-                <span className="count">{visible.length} позиций</span>
-              </div>
-
-              <div className="toolbar">
-                <div className="search">
-                  <Search size={18} />
-                  <input
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    placeholder="Найти растение..."
-                  />
-                </div>
-
-                <div className="filter-label">
-                  <SlidersHorizontal size={16} /> Категории
-                </div>
-              </div>
-
-              <div className="chips">
-                {['Все растения', ...categories.map(c => c.name)].map(c => (
-                  <button
-                    key={c}
-                    onClick={() => setCategory(c)}
-                    className={category === c ? 'chip active' : 'chip'}
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-
-              {usingDemo && (
-                <div className="notice">
-                  Пока показываем демонстрационные карточки. После подключения
-                  приложения к базе здесь появятся твои растения.
-                </div>
-              )}
-
-              {loading ? (
-                <div className="empty">Загружаем каталог…</div>
-              ) : visible.length ? (
-                <div className="grid">
-                  {visible.map(p => (
-                    <article className="plant-card" key={p.id}>
-                      <div className="plant-photo">
-                        {p.photo && supabase ? (
-                          <img
-                            src={
-                              supabase.storage
-                                .from('plant-photos')
-                                .getPublicUrl(p.photo).data.publicUrl
-                            }
-                            alt={p.name}
-                          />
-                        ) : (
-                          <div className="photo-placeholder">
-                            <Leaf size={42} />
-                            <span>растение</span>
-                          </div>
-                        )}
-
-                        <button className="heart" aria-label="В избранное">
-                          <Heart size={18} />
-                        </button>
-
-                        <span className="photo-tag">В наличии</span>
-                      </div>
-
-                      <div className="plant-info">
-                        <p className="plant-category">{p.category}</p>
-                        <h3>{p.name}</h3>
-
-                        {p.botanical_name && (
-                          <p className="latin">{p.botanical_name}</p>
-                        )}
-
-                        <p className="description">
-                          {p.description || 'Растение из домашней коллекции.'}
-                        </p>
-
-                        <div className="card-bottom">
-                          <strong>
-                            {Number(p.price).toLocaleString('ru-RU')} ₽
-                          </strong>
-
-                          <span>
-                            {p.stock > 1 ? `${p.stock} шт.` : '1 экземпляр'}
-                          </span>
+                <div style={detailLayout}>
+                  <div>
+                    <div style={detailPhoto}>
+                      {selectedVariant?.photos?.length > 0 ? (
+                        <img
+                          src={getPhotoUrl(selectedVariant.photos[0].storage_path)}
+                          alt={selectedPlant.name}
+                        />
+                      ) : (
+                        <div className="photo-placeholder">
+                          <Leaf size={55} />
+                          <span>растение</span>
                         </div>
+                      )}
+                    </div>
+
+                    {selectedVariant?.photos?.length > 1 && (
+                      <div style={photoGallery}>
+                        {selectedVariant.photos.map((photo, index) => (
+                          <img
+                            key={photo.storage_path}
+                            src={getPhotoUrl(photo.storage_path)}
+                            alt={`${selectedPlant.name}, фото ${index + 1}`}
+                            style={galleryImage}
+                          />
+                        ))}
                       </div>
-                    </article>
-                  ))}
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="plant-category">{selectedPlant.category}</p>
+                    <h1 style={detailTitle}>{selectedPlant.name}</h1>
+
+                    {selectedPlant.botanical_name && (
+                      <p className="latin">{selectedPlant.botanical_name}</p>
+                    )}
+
+                    {selectedPlant.cultivar && (
+                      <p className="latin">{selectedPlant.cultivar}</p>
+                    )}
+
+                    <p className="description" style={{ marginTop: 20 }}>
+                      {selectedVariant?.description || selectedPlant.description ||
+                        'Растение из домашней коллекции.'}
+                    </p>
+
+                    <h3 style={{ marginTop: 28 }}>Выберите размер</h3>
+
+                    <div style={variantButtons}>
+                      {selectedPlant.variants.map(v => (
+                        <button
+                          key={v.id}
+                          onClick={() => setSelectedVariantId(v.id)}
+                          style={
+                            selectedVariant?.id === v.id
+                              ? selectedVariantButton
+                              : variantButton
+                          }
+                        >
+                          {v.pot_diameter
+                            ? `${v.pot_diameter} см`
+                            : 'Размер не указан'}
+                          {v.status !== 'available' || Number(v.stock) <= 0
+                            ? ' · нет в наличии'
+                            : ''}
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedVariant && (
+                      <div style={variantDetails}>
+                        <div style={detailLine}>
+                          <span>Диаметр горшка</span>
+                          <strong>
+                            {selectedVariant.pot_diameter
+                              ? `${selectedVariant.pot_diameter} см`
+                              : 'Не указан'}
+                          </strong>
+                        </div>
+
+                        <div style={detailLine}>
+                          <span>Высота растения</span>
+                          <strong>{getHeight(selectedVariant) || 'Не указана'}</strong>
+                        </div>
+
+                        <div style={detailLine}>
+                          <span>Количество</span>
+                          <strong>
+                            {selectedVariant.status === 'available' &&
+                              Number(selectedVariant.stock) > 0
+                              ? `${selectedVariant.stock} шт.`
+                              : 'Нет в наличии'}
+                          </strong>
+                        </div>
+
+                        <div style={detailPrice}>
+                          {formatPrice(selectedVariant.price)}
+                        </div>
+
+                        {selectedVariant.status === 'available' &&
+                          Number(selectedVariant.stock) > 0 &&
+                          selectedVariant.avito_url && (
+                            <a
+                              href={selectedVariant.avito_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={avitoButton}
+                            >
+                              Посмотреть объявление на Avito
+                            </a>
+                          )}
+                      </div>
+                    )}
+
+                    {selectedPlant.care && (
+                      <div style={{ marginTop: 30 }}>
+                        <h3>Уход</h3>
+                        <p className="description">{selectedPlant.care}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div className="empty">
-                  Пока здесь нет растений. Они появятся после добавления в каталог.
-                </div>
-              )}
-            </section>
+              </section>
+            ) : (
+              <>
+                <section className="hero">
+                  <div className="hero-copy">
+                    <p className="eyebrow">
+                      <Sprout size={15} /> РАСТЕНИЯ С ХАРАКТЕРОМ
+                    </p>
+
+                    <h1>
+                      Найдите своё<br />
+                      <em>зелёное</em> растение
+                    </h1>
+
+                    <p className="hero-sub">
+                      Домашние растения, выращенные с вниманием и заботой.
+                    </p>
+                  </div>
+
+                  <div className="hero-art" aria-hidden="true">
+                    <div className="sun"></div>
+                    <div className="plant-shape leaf-a"></div>
+                    <div className="plant-shape leaf-b"></div>
+                    <div className="plant-shape leaf-c"></div>
+                    <div className="pot"></div>
+                  </div>
+                </section>
+
+                <section className="catalog">
+                  <div className="section-heading">
+                    <div>
+                      <p className="eyebrow">КОЛЛЕКЦИЯ</p>
+                      <h2>Растения в наличии</h2>
+                    </div>
+
+                    <span className="count">{visible.length} позиций</span>
+                  </div>
+
+                  <div className="toolbar">
+                    <div className="search">
+                      <Search size={18} />
+                      <input
+                        value={query}
+                        onChange={e => setQuery(e.target.value)}
+                        placeholder="Найти растение..."
+                      />
+                    </div>
+
+                    <div className="filter-label">
+                      <SlidersHorizontal size={16} /> Категории
+                    </div>
+                  </div>
+
+                  <div className="chips">
+                    {['Все растения', ...categories.map(c => c.name)].map(c => (
+                      <button
+                        key={c}
+                        onClick={() => setCategory(c)}
+                        className={category === c ? 'chip active' : 'chip'}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                  </div>
+
+                  {usingDemo && (
+                    <div className="notice">
+                      Пока показываем демонстрационные карточки. После подключения
+                      приложения к базе здесь появятся твои растения.
+                    </div>
+                  )}
+
+                  {loading ? (
+                    <div className="empty">Загружаем каталог…</div>
+                  ) : visible.length ? (
+                    <div className="grid">
+                      {visible.map(p => {
+                        const available = p.variants.filter(v =>
+                          v.status === 'available' && Number(v.stock) > 0
+                        );
+                        const minPrice = Math.min(
+                          ...available.map(v => Number(v.price))
+                        );
+                        const totalStock = available.reduce(
+                          (sum, v) => sum + Number(v.stock || 0),
+                          0
+                        );
+                        const firstVariant = sortVariants(available)[0];
+                        const firstPhoto = firstVariant?.photos?.[0]?.storage_path;
+
+                        return (
+                          <article
+                            className="plant-card"
+                            key={p.id}
+                            onClick={() => openPlant(p)}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            <div className="plant-photo">
+                              {firstPhoto && supabase ? (
+                                <img
+                                  src={getPhotoUrl(firstPhoto)}
+                                  alt={p.name}
+                                />
+                              ) : (
+                                <div className="photo-placeholder">
+                                  <Leaf size={42} />
+                                  <span>растение</span>
+                                </div>
+                              )}
+
+                              <button
+                                className="heart"
+                                aria-label="В избранное"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                <Heart size={18} />
+                              </button>
+
+                              <span className="photo-tag">В наличии</span>
+                            </div>
+
+                            <div className="plant-info">
+                              <p className="plant-category">{p.category}</p>
+                              <h3>{p.name}</h3>
+
+                              {p.botanical_name && (
+                                <p className="latin">{p.botanical_name}</p>
+                              )}
+
+                              <p className="description">
+                                {p.description || 'Растение из домашней коллекции.'}
+                              </p>
+
+                              <div style={cardVariantInfo}>
+                                {available.length} {available.length === 1
+                                  ? 'размер'
+                                  : available.length < 5 ? 'размера' : 'размеров'}
+                                {' · '}{totalStock} шт. в наличии
+                              </div>
+
+                              <div className="card-bottom">
+                                <strong>от {formatPrice(minPrice)}</strong>
+                                <span>Подробнее →</span>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="empty">
+                      Пока здесь нет растений. Они появятся после добавления в каталог.
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
           </main>
 
           <footer>
@@ -1835,4 +2173,122 @@ const errorText = {
 const successText = {
   color: '#405c43',
   fontSize: 13
+};
+
+const backButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 0',
+  border: 0,
+  background: 'transparent',
+  color: '#405c43',
+  cursor: 'pointer',
+  font: 'inherit',
+  marginBottom: 20
+};
+
+const detailLayout = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,320px),1fr))',
+  gap: 36,
+  alignItems: 'start',
+  marginTop: 15
+};
+
+const detailPhoto = {
+  width: '100%',
+  aspectRatio: '1 / 1',
+  overflow: 'hidden',
+  borderRadius: 8,
+  background: '#edf1e9'
+};
+
+const photoGallery = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill,minmax(75px,1fr))',
+  gap: 8,
+  marginTop: 10
+};
+
+const galleryImage = {
+  width: '100%',
+  aspectRatio: '1 / 1',
+  objectFit: 'cover',
+  borderRadius: 5
+};
+
+const detailTitle = {
+  fontFamily: 'Playfair Display, serif',
+  fontWeight: 500,
+  fontSize: 'clamp(30px,4vw,44px)',
+  lineHeight: 1.15,
+  margin: '8px 0'
+};
+
+const variantButtons = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 9,
+  marginTop: 14
+};
+
+const variantButton = {
+  padding: '11px 15px',
+  border: '1px solid #dfe4d9',
+  borderRadius: 5,
+  background: '#fff',
+  color: '#405c43',
+  cursor: 'pointer',
+  font: 'inherit',
+  fontSize: 13
+};
+
+const selectedVariantButton = {
+  ...variantButton,
+  background: '#405c43',
+  color: '#fff',
+  borderColor: '#405c43'
+};
+
+const variantDetails = {
+  marginTop: 22,
+  padding: 18,
+  border: '1px solid #e3e8df',
+  borderRadius: 7,
+  background: '#fff'
+};
+
+const detailLine = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 15,
+  padding: '9px 0',
+  borderBottom: '1px solid #edf0e9',
+  fontSize: 13,
+  color: '#52634f'
+};
+
+const detailPrice = {
+  fontSize: 27,
+  fontWeight: 600,
+  color: '#405c43',
+  marginTop: 18
+};
+
+const avitoButton = {
+  display: 'inline-flex',
+  marginTop: 16,
+  padding: '12px 16px',
+  borderRadius: 5,
+  background: '#405c43',
+  color: '#fff',
+  textDecoration: 'none',
+  fontSize: 13
+};
+
+const cardVariantInfo = {
+  color: '#788575',
+  fontSize: 12,
+  marginTop: 12
 };
