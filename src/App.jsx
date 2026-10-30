@@ -6,6 +6,26 @@ import {
 } from 'lucide-react';
 import { supabase } from './supabase';
 
+function makeSlug(value) {
+  const transliteration = {
+    а: 'a', б: 'b', в: 'v', г: 'g', д: 'd',
+    е: 'e', ё: 'yo', ж: 'zh', з: 'z', и: 'i',
+    й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
+    о: 'o', п: 'p', р: 'r', с: 's', т: 't',
+    у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch',
+    ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '',
+    э: 'e', ю: 'yu', я: 'ya'
+  };
+
+  return value
+    .toLowerCase()
+    .split('')
+    .map(char => transliteration[char] ?? char)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 const emptyForm = {
   plant_id: '',
   plant_name: '',
