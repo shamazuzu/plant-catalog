@@ -231,6 +231,7 @@ export default function App() {
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showContacts, setShowContacts] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -577,27 +578,38 @@ export default function App() {
       if (match) {
         setShowDelivery(false);
         setShowContacts(false);
+        setShowAbout(false);
         setSelectedPlantId(decodeURIComponent(match[1]));
         setSelectedVariantId(null);
         setLightboxIndex(null);
+      } else if (hash === '#/about') {
+        setSelectedPlantId(null);
+        setSelectedVariantId(null);
+        setLightboxIndex(null);
+        setShowDelivery(false);
+        setShowContacts(false);
+        setShowAbout(true);
       } else if (hash === '#/delivery') {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
         setLightboxIndex(null);
         setShowDelivery(true);
         setShowContacts(false);
+        setShowAbout(false);
       } else if (hash === '#/contacts') {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
         setLightboxIndex(null);
         setShowDelivery(false);
         setShowContacts(true);
+        setShowAbout(false);
       } else {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
         setLightboxIndex(null);
         setShowDelivery(false);
         setShowContacts(false);
+        setShowAbout(false);
       }
     }
 
@@ -609,6 +621,7 @@ export default function App() {
   function openPlant(plant) {
     setShowDelivery(false);
     setShowContacts(false);
+    setShowAbout(false);
     setSelectedPlantId(plant.id);
 
     const favoriteVariant = plant.variants.find(v => favorites.includes(v.id));
@@ -626,6 +639,7 @@ export default function App() {
     setSelectedVariantId(null);
     setShowDelivery(false);
     setShowContacts(false);
+    setShowAbout(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -634,6 +648,7 @@ export default function App() {
     setSelectedVariantId(null);
     setLightboxIndex(null);
     setShowContacts(false);
+    setShowAbout(false);
     setShowDelivery(true);
     window.location.hash = '/delivery';
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -644,14 +659,27 @@ export default function App() {
     setSelectedVariantId(null);
     setLightboxIndex(null);
     setShowDelivery(false);
+    setShowAbout(false);
     setShowContacts(true);
     window.location.hash = '/contacts';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openAbout() {
+    setSelectedPlantId(null);
+    setSelectedVariantId(null);
+    setLightboxIndex(null);
+    setShowDelivery(false);
+    setShowContacts(false);
+    setShowAbout(true);
+    window.location.hash = '/about';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function backToCatalog() {
     setShowDelivery(false);
     setShowContacts(false);
+    setShowAbout(false);
     setSelectedPlantId(null);
     setSelectedVariantId(null);
     setLightboxIndex(null);
@@ -1189,6 +1217,7 @@ export default function App() {
             setLightboxIndex(null);
             setShowDelivery(false);
             setShowContacts(false);
+            setShowAbout(false);
           }}
         >
           <span className="brand-icon"><Leaf size={21} /></span>
@@ -1215,6 +1244,17 @@ export default function App() {
           justifyContent: 'flex-end'
         }}>
           <span className="top-note">Небольшая коллекция растений</span>
+
+          <a
+            href="#/about"
+            onClick={event => {
+              event.preventDefault();
+              openAbout();
+            }}
+            style={deliveryLink}
+          >
+            О нас
+          </a>
 
           <a
             href="#/contacts"
@@ -1768,7 +1808,102 @@ export default function App() {
       ) : (
         <>
           <main>
-            {showContacts ? (
+            {showAbout ? (
+              <section className="catalog">
+                <button style={backButton} onClick={backToCatalog}>
+                  <ArrowLeft size={16} /> Назад в каталог
+                </button>
+
+                <div style={aboutPage}>
+                  <p className="eyebrow">KIND OF GREEN</p>
+                  <h1 style={detailTitle}>О нас</h1>
+
+                  <p style={aboutIntro}>
+                    Комнатные растения для дома по разумным ценам. Уже подготовленные к жизни у вас дома.
+                  </p>
+
+                  <p style={aboutText}>
+                    Здесь собраны комнатные растения на разный вкус и бюджет: от неприхотливой зелени для начинающих до необычных экземпляров для тех, кто уже успел заболеть домашними джунглями.
+                  </p>
+
+                  <p style={aboutText}>
+                    Часть растений я выращиваю самостоятельно, другие закупаю у поставщиков, адаптирую к новым условиям и только после этого выставляю на продажу.
+                  </p>
+
+                  <p style={aboutText}>
+                    Моя задача — сделать комнатные растения доступнее, не экономя на их состоянии и качестве.
+                  </p>
+
+                  <h2 style={aboutHeading}>Почему стоит покупать здесь?</h2>
+
+                  <div style={aboutGrid}>
+                    <article style={aboutCard}>
+                      <h3>Цены без лишней магазинной наценки</h3>
+                      <p style={aboutText}>
+                        Я работаю в небольшом формате, без дорогой торговой площади и большого штата сотрудников. Это позволяет предлагать растения по более доступным ценам, чем во многих традиционных магазинах.
+                      </p>
+                    </article>
+
+                    <article style={aboutCard}>
+                      <h3>Растения уже подготовлены к домашнему содержанию</h3>
+                      <p style={aboutText}>
+                        Все растения адаптированы, посажены в подходящий авторский грунт и обеспечены удобрением пролонгированного действия с запасом питания примерно на полгода. Не нужно сразу искать подходящий субстрат, покупать удобрения и заниматься пересадкой. Остаётся выбрать растению подходящее место и поливать с учётом его потребностей.
+                      </p>
+                    </article>
+
+                    <article style={aboutCard}>
+                      <h3>Растения с понятной историей</h3>
+                      <p style={aboutText}>
+                        Часть ассортимента выращена самостоятельно. Закупленные растения проходят адаптацию и проверку перед продажей. Я уделяю внимание корням, состоянию листьев и общему здоровью растения.
+                      </p>
+                    </article>
+
+                    <article style={aboutCard}>
+                      <h3>Ассортимент постоянно обновляется</h3>
+                      <p style={aboutText}>
+                        Популярные комнатные растения, интересные новинки и экземпляры, которые не всегда встретишь в ближайшем цветочном магазине. Количество некоторых позиций ограничено.
+                      </p>
+                    </article>
+
+                    <article style={aboutCard}>
+                      <h3>Помощь с выбором и уходом</h3>
+                      <p style={aboutText}>
+                        Не знаете, какое растение подойдёт для вашей квартиры или с чего начать? Помогу подобрать вариант с учётом условий содержания и расскажу об основных особенностях ухода.
+                      </p>
+                    </article>
+                  </div>
+
+                  <h2 style={aboutHeading}>Что можно найти в каталоге?</h2>
+
+                  <p style={aboutText}>
+                    Ассортимент не ограничивается одной категорией растений. Здесь постепенно собирается разнообразная коллекция комнатной зелени.
+                  </p>
+
+                  <p style={aboutText}>
+                    В основном это небольшие экземпляры, но могу достать и крупномеры по договорённости, адаптирую и посажу в подходящий грунт.
+                  </p>
+
+                  <h2 style={aboutHeading}>Как купить?</h2>
+
+                  <p style={aboutText}>
+                    Выберите понравившееся растение в каталоге, посмотрите фотографии, описание и актуальную цену. После этого свяжитесь со мной, чтобы уточнить наличие и договориться о покупке.
+                  </p>
+
+                  <div style={aboutDelivery}>
+                    <p>📍 Самовывоз в Санкт-Петербурге.</p>
+                    <p>🚗 Возможна доставка по Санкт-Петербургу по договорённости.</p>
+                  </div>
+
+                  <p style={aboutText}>
+                    Ассортимент и наличие регулярно обновляются — заглядывайте, возможно, именно сегодня появилось что-то интересное.
+                  </p>
+
+                  <p style={aboutFinal}>
+                    Домашние джунгли начинаются с одного растения.
+                  </p>
+                </div>
+              </section>
+            ) : showContacts ? (
               <section className="catalog">
                 <button style={backButton} onClick={backToCatalog}>
                   <ArrowLeft size={16} /> Назад в каталог
@@ -2999,4 +3134,65 @@ const cardVariantInfo = {
   color: '#788575',
   fontSize: 12,
   marginTop: 12
+};
+
+const aboutPage = {
+  maxWidth: 850,
+  margin: '20px auto 70px',
+  padding: '0 4px'
+};
+
+const aboutIntro = {
+  fontSize: 22,
+  lineHeight: 1.45,
+  fontWeight: 600,
+  color: '#405c43',
+  margin: '28px 0'
+};
+
+const aboutText = {
+  fontSize: 15,
+  lineHeight: 1.8,
+  color: '#555d52',
+  margin: '14px 0'
+};
+
+const aboutHeading = {
+  fontSize: 23,
+  fontWeight: 500,
+  color: '#354b38',
+  margin: '48px 0 20px'
+};
+
+const aboutGrid = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+  gap: 14,
+  marginTop: 20
+};
+
+const aboutCard = {
+  background: '#f5f6f1',
+  border: '1px solid #e7e9e1',
+  borderRadius: 8,
+  padding: 22
+};
+
+const aboutDelivery = {
+  background: '#f5f6f1',
+  borderRadius: 8,
+  padding: '12px 22px',
+  margin: '24px 0',
+  color: '#405c43',
+  lineHeight: 1.6
+};
+
+const aboutFinal = {
+  marginTop: 42,
+  padding: '26px 10px',
+  textAlign: 'center',
+  color: '#405c43',
+  fontSize: 21,
+  fontWeight: 500,
+  lineHeight: 1.5
 };
