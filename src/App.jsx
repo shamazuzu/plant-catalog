@@ -88,27 +88,26 @@ export default function App() {
   const [adminMessage, setAdminMessage] = useState('');
   const [adminError, setAdminError] = useState('');
 
-  // Проверка прав администратора
-  async function checkAdmin(user) {
-    if (!user || !supabase) {
-      setIsAdmin(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('app_admins')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (error) {
-      console.error('Ошибка проверки администратора:', error);
-      setIsAdmin(false);
-      return;
-    }
-
-    setIsAdmin(Boolean(data));
+// Проверка прав администратора
+async function checkAdmin(user) {
+  if (!user || !supabase) {
+    setIsAdmin(false);
+    return false;
   }
+
+  const { data, error } = await supabase.rpc('is_admin');
+
+  if (error) {
+    console.error('Ошибка проверки администратора:', error);
+    setIsAdmin(false);
+    return false;
+  }
+
+  const isAdmin = data === true;
+  setIsAdmin(isAdmin);
+
+  return isAdmin;
+}
 
   // Авторизация и восстановление пароля
   useEffect(() => {
