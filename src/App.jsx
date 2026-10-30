@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import QRCode from 'qrcode';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
   Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save,
@@ -232,6 +234,13 @@ export default function App() {
   const [showDelivery, setShowDelivery] = useState(false);
   const [showContacts, setShowContacts] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [qrOffer, setQrOffer] = useState(null);
+  const [qrImage, setQrImage] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerError, setScannerError] = useState('');
+  const [scannerInstance, setScannerInstance] = useState(null);
+  const [routeOfferId, setRouteOfferId] = useState(null);
 
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -573,7 +582,20 @@ export default function App() {
   useEffect(() => {
     function readHash() {
       const hash = window.location.hash;
+      const offerMatch = hash.match(/^#\/offer\/([^/]+)$/);
       const match = hash.match(/^#\/plant\/([^/]+)$/);
+
+      if (offerMatch) {
+        setRouteOfferId(decodeURIComponent(offerMatch[1]));
+        setShowDelivery(false);
+        setShowContacts(false);
+        setShowAbout(false);
+        setSelectedPlantId(null);
+        setSelectedVariantId(null);
+        setLightboxIndex(null);
+        return;
+      }
+      setRouteOfferId(null);
 
       if (match) {
         setShowDelivery(false);
@@ -617,6 +639,118 @@ export default function App() {
     window.addEventListener('hashchange', readHash);
     return () => window.removeEventListener('hashchange', readHash);
   }, []);
+
+  useEffect(() => {
+    if (!routeOfferId || !plants.length) return;
+    const parent = plants.find(p => p.variants.some(v => String(v.id) === String(routeOfferId)));
+    if (parent) {
+      setSelectedPlantId(parent.id);
+      setSelectedVariantId(routeOfferId);
+    }
+  }, [routeOfferId, plants]);
+
+  useEffect(() => {
+    if (!routeOfferId || !isAdmin || !adminOffers.length) return;
+    const offer = adminOffers.find(item => String(item.id) === String(routeOfferId));
+    if (offer) {
+      setAdminOpen(true);
+      setAdminTab('plants');
+      startEdit(offer);
+      setRouteOfferId(null);
+    }
+  }, [routeOfferId, isAdmin, adminOffers]);
+
+  function offerUrl(offer) {
+    return `${window.location.origin}${window.location.pathname}${window.location.search}#/offer/${encodeURIComponent(offer.id)}`;
+  }
+
+  async function showOfferQr(offer) {
+    setQrOffer(offer);
+    setQrImage('');
+    setQrLoading(true);
+    try {
+      const dataUrl = await QRCode.toDataURL(offerUrl(offer), {
+        width: 420, margin: 2, errorCorrectionLevel: 'M',
+        color: { dark: '#24352b', light: '#ffffff' }
+      });
+      setQrImage(dataUrl);
+    } catch (error) {
+      setAdminError('Не удалось создать QR-код: ' + error.message);
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
+  async function printOfferQr(offer) {
+    try {
+      const dataUrl = await QRCode.toDataURL(offerUrl(offer), {
+        width: 420, margin: 2, errorCorrectionLevel: 'M'
+      });
+      const title = offer.plants?.name || 'Растение';
+      const article = offer.article_code || String(offer.id).slice(0, 8);
+      const size = offer.pot_diameter ? `Горшок ${offer.pot_diameter} см` : (offer.size_label || '');
+      const win = window.open('', '_blank', 'width=500,height=600');
+      if (!win) throw new Error('Разреши всплывающие окна для печати.');
+      win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>QR ${article}</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:18px;color:#24352b}.label{width:55mm;min-height:65mm;margin:auto;padding:4mm;border:1px solid #ddd;box-sizing:border-box;page-break-after:always}img{width:42mm;height:42mm}h2{font-size:14px;margin:3mm 0}p{font-size:11px;margin:2mm 0}@page{size:auto;margin:8mm}@media print{button{display:none}}</style></head><body><div class="label"><h2>${escapeHtml(title)}</h2><p>${escapeHtml(size)}</p><img src="${dataUrl}"><p>Артикул: ${escapeHtml(article)}</p></div><button onclick="window.print()">Печать наклейки</button></body></html>`);
+      win.document.close();
+    } catch (error) {
+      setAdminError('Не удалось подготовить печать: ' + error.message);
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+  }
+
+  async function startQrScanner() {
+    setScannerError('');
+    setScannerOpen(true);
+  }
+
+  useEffect(() => {
+    if (!scannerOpen) {
+      if (scannerInstance) {
+        scannerInstance.stop().catch(() => {}).finally(() => {
+          scannerInstance.clear();
+          setScannerInstance(null);
+        });
+      }
+      return;
+    }
+    let active = true;
+    let instance;
+    const timer = window.setTimeout(async () => {
+      try {
+        instance = new Html5Qrcode('kind-green-qr-reader');
+        if (!active) return;
+        setScannerInstance(instance);
+        await instance.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          async decodedText => {
+            const match = decodedText.match(/#\/offer\/([^/?#]+)/);
+            if (!match) {
+              setScannerError('Это не QR-код предложения Kind of Green.');
+              return;
+            }
+            const id = decodeURIComponent(match[1]);
+            setScannerOpen(false);
+            window.location.hash = `/offer/${encodeURIComponent(id)}`;
+          },
+          () => {}
+        );
+      } catch (error) {
+        if (active) setScannerError('Не удалось запустить камеру. Проверь разрешение и HTTPS: ' + (error.message || error));
+      }
+    }, 120);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      if (instance) instance.stop().catch(() => {}).finally(() => instance.clear());
+    };
+  }, [scannerOpen]);
 
   function openPlant(plant) {
     setShowDelivery(false);
@@ -734,8 +868,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (adminOpen && isAdmin) loadAdminData();
-  }, [adminOpen, isAdmin]);
+    if ((adminOpen || routeOfferId) && isAdmin) loadAdminData();
+  }, [adminOpen, isAdmin, routeOfferId]);
 
   function startEditCategory(item) {
     setEditingCategoryId(item.id);
@@ -1244,6 +1378,7 @@ export default function App() {
           justifyContent: 'flex-end'
         }}>
           <span className="top-note">Небольшая коллекция растений</span>
+          <button type="button" style={headerButton} onClick={startQrScanner}>Сканировать QR</button>
 
           <a
             href="#/about"
@@ -1346,6 +1481,17 @@ export default function App() {
 
             <button
               onClick={() => {
+                setAdminTab('qr');
+                setAdminError('');
+                setAdminMessage('');
+              }}
+              style={adminTab === 'qr' ? activeTabButton : tabButton}
+            >
+              QR-наклейки
+            </button>
+
+            <button
+              onClick={() => {
                 setAdminTab('categories');
                 setAdminError('');
                 setAdminMessage('');
@@ -1359,6 +1505,28 @@ export default function App() {
 
           {adminError && <p style={errorText}>{adminError}</p>}
           {adminMessage && <p style={successText}>{adminMessage}</p>}
+
+          {adminTab === 'qr' && (
+            <div style={adminPanel}>
+              <h3 style={{ marginTop: 0 }}>QR-коды предложений</h3>
+              <p style={mutedText}>Каждый код ведёт на конкретный размер/предложение. Артикул и QR сохраняют связь с записью даже после изменения цены или фотографий.</p>
+              <div style={{ marginTop: 18 }}>
+                {filteredAdminOffers.map(offer => (
+                  <div key={offer.id} style={offerRow}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <strong>{offer.plants?.name || 'Растение'}</strong>
+                      <div style={{ fontSize: 12, color: '#788575', marginTop: 4 }}>
+                        Артикул: {offer.article_code || '—'} · {offer.pot_diameter ? `${offer.pot_diameter} см` : 'Размер не указан'}
+                      </div>
+                    </div>
+                    <button type="button" style={smallActionButton} onClick={() => showOfferQr(offer)}>Показать QR</button>
+                    <button type="button" style={iconButton} title="Печать наклейки" onClick={() => printOfferQr(offer)}>Печать</button>
+                  </div>
+                ))}
+                {filteredAdminOffers.length === 0 && <p className="empty">Предложений пока нет.</p>}
+              </div>
+            </div>
+          )}
 
           {adminTab === 'categories' && (
             <div style={adminPanel}>
@@ -2478,6 +2646,30 @@ export default function App() {
               {lightboxIndex + 1} / {lightboxPhotos.length}
             </div>
           )}
+        </div>
+      )}
+
+      {qrOffer && (
+        <div style={modalBackdrop} onClick={() => setQrOffer(null)}>
+          <div style={modalBox} onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => setQrOffer(null)} style={closeButton} aria-label="Закрыть"><X size={20} /></button>
+            <h2 style={modalTitle}>{qrOffer.plants?.name || 'Растение'}</h2>
+            <p style={mutedText}>Артикул: {qrOffer.article_code || '—'}</p>
+            {qrLoading ? <p>Создаём QR-код…</p> : qrImage && <img src={qrImage} alt="QR-код предложения" style={{ display: 'block', width: '100%', maxWidth: 320, margin: '18px auto' }} />}
+            <button type="button" style={submitButton} onClick={() => printOfferQr(qrOffer)}>Печать наклейки</button>
+          </div>
+        </div>
+      )}
+
+      {scannerOpen && (
+        <div style={modalBackdrop} onClick={() => setScannerOpen(false)}>
+          <div style={{ ...modalBox, maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+            <button type="button" onClick={() => setScannerOpen(false)} style={closeButton} aria-label="Закрыть"><X size={20} /></button>
+            <h2 style={modalTitle}>Сканирование QR</h2>
+            <p style={mutedText}>Наведи камеру на наклейку предложения.</p>
+            <div id="kind-green-qr-reader" style={{ width: '100%', marginTop: 16 }} />
+            {scannerError && <p style={errorText}>{scannerError}</p>}
+          </div>
         </div>
       )}
 
