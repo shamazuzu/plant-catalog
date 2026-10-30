@@ -176,18 +176,15 @@ async function checkAdmin(user) {
       return;
     }
 
-    const { data: adminData, error: adminError } = await supabase
-      .from('app_admins')
-      .select('user_id')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
+    const { data: adminData, error: adminError } = await supabase.rpc('is_admin');
 
-    if (adminError || !adminData) {
-      await supabase.auth.signOut();
-      setAuthError('У этого аккаунта нет прав администратора.');
-      setAuthLoading(false);
-      return;
-    }
+if (adminError || adminData !== true) {
+  console.error('Ошибка проверки администратора:', adminError);
+  await supabase.auth.signOut();
+  setAuthError('Не удалось подтвердить права администратора.');
+  setAuthLoading(false);
+  return;
+}
 
     setSession(data.session);
     setIsAdmin(true);
