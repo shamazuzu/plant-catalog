@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
   Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save,
-  Trash2, ChevronUp, ChevronDown
+  Trash2
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -55,6 +55,12 @@ function sortVariants(variants) {
     const db = Number(b.pot_diameter) || 0;
     return da - db;
   });
+}
+
+function sortCategories(categories) {
+  return [...categories].sort((a, b) =>
+    a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+  );
 }
 
 function formatPrice(value) {
@@ -465,13 +471,9 @@ export default function App() {
         .order('created_at', { ascending: false })
     ]);
 
-   if (cats) {
-  setCategories(
-    [...cats].sort((a, b) =>
-      a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
-    )
-  );
-}
+    if (cats) {
+      setCategories(sortCategories(cats));
+    }
 
     if (error) {
       console.error('Ошибка загрузки каталога:', error);
@@ -566,11 +568,7 @@ export default function App() {
 
     setAdminPlants(plantsData || []);
     setAdminOffers(offersData || []);
-    setAdminCategories(
-  [...(categoryData || [])].sort((a, b) =>
-    a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
-  )
-);
+    setAdminCategories(sortCategories(categoryData || []));
   }
 
   useEffect(() => {
@@ -590,85 +588,89 @@ export default function App() {
     setCategoryForm('');
   }
 
-async function saveCategory(event) {
-  event.preventDefault();
+  async function saveCategory(event) {
+    event.preventDefault();
 
-  const name = categoryForm.trim();
+    const name = categoryForm.trim();
 
-  if (!name) {
-    setAdminError('Введи название категории.');
-    return;
-  }
+    if (!name) {
+      setAdminError('Введи название категории.');
+      return;
+    }
 
-  setCategorySaving(true);
-  setAdminError('');
-  setAdminMessage('');
+    setCategorySaving(true);
+    setAdminError('');
+    setAdminMessage('');
 
-  try {
-    let result;
-
-    if (editingCategoryId) {
-      result = await supabase
-        .from('plant_categories')
-        .update({
-          name,
-          slug: makeSlug(name)
-        })
-        .eq('id', editingCategoryId);
-    } else {
-      const maxOrder = Math.max(
-        0,
-        ...adminCategories.map(item => Number(item.sort_order) || 0)
-      );
+    try {
+      let result;
 
       const baseSlug = makeSlug(name);
 
-      const { data: existingSlugs, error: slugError } = await supabase
-        .from('plant_categories')
-        .select('slug');
-
-      if (slugError) throw slugError;
-
-      const usedSlugs = new Set(
-        (existingSlugs || []).map(item => item.slug)
-      );
-
-      let slug = baseSlug;
-      let suffix = 2;
-
-      while (usedSlugs.has(slug)) {
-        slug = `${baseSlug}-${suffix}`;
-        suffix++;
+      if (!baseSlug) {
+        throw new Error('Не удалось создать адрес категории. Измени название.');
       }
 
-      result = await supabase
-        .from('plant_categories')
-        .insert({
-          name,
-          slug,
-          sort_order: maxOrder + 1,
-          is_active: true
-        });
+      if (editingCategoryId) {
+        result = await supabase
+          .from('plant_categories')
+          .update({
+            name,
+            slug: baseSlug
+          })
+          .eq('id', editingCategoryId);
+      } else {
+        const maxOrder = Math.max(
+          0,
+          ...adminCategories.map(item => Number(item.sort_order) || 0)
+        );
+
+        const { data: existingSlugs, error: slugError } = await supabase
+          .from('plant_categories')
+          .select('slug');
+
+        if (slugError) throw slugError;
+
+        const usedSlugs = new Set(
+          (existingSlugs || []).map(item => item.slug)
+        );
+
+        let slug = baseSlug;
+        let suffix = 2;
+
+        while (usedSlugs.has(slug)) {
+          slug = `${baseSlug}-${suffix}`;
+          suffix++;
+        }
+
+        result = await supabase
+          .from('plant_categories')
+          .insert({
+            name,
+            slug,
+            sort_order: maxOrder + 1,
+            is_active: true
+          });
+      }
+
+      if (result.error) throw result.error;
+
+      cancelEditCategory();
+
+      await loadAdminData();
+      await loadCatalog();
+
+      setAdminMessage('Категория сохранена.');
+    } catch (error) {
+      console.error(error);
+      setAdminError(
+        'Не удалось сохранить категорию: ' +
+        (error.message || 'неизвестная ошибка')
+      );
+    } finally {
+      setCategorySaving(false);
     }
-
-    if (result.error) throw result.error;
-
-    cancelEditCategory();
-
-    await loadAdminData();
-    await loadCatalog();
-
-    setAdminMessage('Категория сохранена.');
-  } catch (error) {
-    console.error(error);
-    setAdminError(
-      'Не удалось сохранить категорию: ' +
-      (error.message || 'неизвестная ошибка')
-    );
-  } finally {
-    setCategorySaving(false);
   }
-}
 
   async function toggleCategory(item) {
     setAdminError('');
@@ -733,43 +735,6 @@ async function saveCategory(event) {
     await loadCatalog();
 
     setAdminMessage('Категория удалена.');
-  }
-
-  async function moveCategory(item, direction) {
-    setAdminError('');
-    setAdminMessage('');
-
-    const sorted = [...adminCategories].sort(
-      (a, b) => a.sort_order - b.sort_order
-    );
-
-    const index = sorted.findIndex(c => c.id === item.id);
-    const nextIndex = index + direction;
-
-    if (nextIndex < 0 || nextIndex >= sorted.length) return;
-
-    const reordered = [...sorted];
-    const [moved] = reordered.splice(index, 1);
-    reordered.splice(nextIndex, 0, moved);
-
-    const updates = await Promise.all(
-      reordered.map((c, i) =>
-        supabase
-          .from('plant_categories')
-          .update({ sort_order: i + 1 })
-          .eq('id', c.id)
-      )
-    );
-
-    const failed = updates.find(result => result.error);
-
-    if (failed) {
-      setAdminError('Не удалось изменить порядок: ' + failed.error.message);
-      return;
-    }
-
-    await loadAdminData();
-    await loadCatalog();
   }
 
   // Новое предложение / новый размер
@@ -975,6 +940,76 @@ async function saveCategory(event) {
     await loadCatalog();
   }
 
+  // Полное удаление одного размера и его фотографий
+  async function deleteOffer(offer) {
+    const confirmed = window.confirm(
+      `Удалить размер горшка ${
+        offer.pot_diameter ? `${offer.pot_diameter} см` : 'без указанного диаметра'
+      } у растения «${offer.plants?.name || 'Растение'}»?\n\n` +
+      'Будут удалены только этот размер и его фотографии. Остальные размеры останутся.'
+    );
+
+    if (!confirmed) return;
+
+    setAdminError('');
+    setAdminMessage('');
+
+    try {
+      // Получаем пути фотографий выбранного размера
+      const { data: photos, error: photosError } = await supabase
+        .from('offer_photos')
+        .select('storage_path')
+        .eq('offer_id', offer.id);
+
+      if (photosError) throw photosError;
+
+      const paths = (photos || [])
+        .map(photo => photo.storage_path)
+        .filter(Boolean);
+
+      // Удаляем записи о фотографиях
+      const { error: photoRecordsError } = await supabase
+        .from('offer_photos')
+        .delete()
+        .eq('offer_id', offer.id);
+
+      if (photoRecordsError) throw photoRecordsError;
+
+      // Удаляем выбранный размер
+      const { error: offerError } = await supabase
+        .from('plant_offers')
+        .delete()
+        .eq('id', offer.id);
+
+      if (offerError) throw offerError;
+
+      // Удаляем файлы фотографий из хранилища
+      if (paths.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from('plant-photos')
+          .remove(paths);
+
+        if (storageError) {
+          console.error('Не удалось удалить файлы фотографий:', storageError);
+        }
+      }
+
+      if (editingId === offer.id) {
+        setEditingId(null);
+        setForm(emptyForm);
+        setNewPhotos([]);
+      }
+
+      await loadAdminData();
+      await loadCatalog();
+
+      setAdminMessage('Размер и его фотографии удалены.');
+    } catch (error) {
+      console.error(error);
+      setAdminError('Не удалось удалить размер: ' + error.message);
+    }
+  }
+
   const visible = useMemo(
     () =>
       plants.filter(p =>
@@ -1092,8 +1127,9 @@ async function saveCategory(event) {
               <h3 style={{ marginTop: 0 }}>Категории растений</h3>
 
               <p style={mutedText}>
-                Создавай категории, меняй их названия и порядок отображения.
+                Создавай категории, меняй их названия.
                 Скрытые категории не видны посетителям каталога.
+                Категории автоматически сортируются по алфавиту.
               </p>
 
               <form onSubmit={saveCategory}>
@@ -1142,47 +1178,42 @@ async function saveCategory(event) {
                 {adminCategories.length === 0 ? (
                   <p className="empty">Категорий пока нет.</p>
                 ) : (
-                 [...adminCategories]
-  .sort((a, b) =>
-    a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
-  )
-  .map(item => (
-                      <div key={item.id} style={categoryRow}>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <strong>{item.name}</strong>
-                          <div style={categoryStatus}>
-                            {item.is_active ? 'Видна в каталоге' : 'Скрыта'}
-                          </div>
+                  sortCategories(adminCategories).map(item => (
+                    <div key={item.id} style={categoryRow}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <strong>{item.name}</strong>
+                        <div style={categoryStatus}>
+                          {item.is_active ? 'Видна в каталоге' : 'Скрыта'}
                         </div>
-
-                       
-                        <button
-                          style={iconButton}
-                          onClick={() => startEditCategory(item)}
-                          title="Переименовать"
-                        >
-                          <Pencil size={16} />
-                        </button>
-
-                        <button
-                          style={iconButton}
-                          onClick={() => toggleCategory(item)}
-                          title={item.is_active ? 'Скрыть' : 'Показать'}
-                        >
-                          {item.is_active
-                            ? <EyeOff size={16} />
-                            : <Eye size={16} />}
-                        </button>
-
-                        <button
-                          style={deleteButton}
-                          onClick={() => deleteCategory(item)}
-                          title="Удалить"
-                        >
-                          <Trash2 size={16} />
-                        </button>
                       </div>
-                    ))
+
+                      <button
+                        style={iconButton}
+                        onClick={() => startEditCategory(item)}
+                        title="Переименовать"
+                      >
+                        <Pencil size={16} />
+                      </button>
+
+                      <button
+                        style={iconButton}
+                        onClick={() => toggleCategory(item)}
+                        title={item.is_active ? 'Скрыть' : 'Показать'}
+                      >
+                        {item.is_active
+                          ? <EyeOff size={16} />
+                          : <Eye size={16} />}
+                      </button>
+
+                      <button
+                        style={deleteButton}
+                        onClick={() => deleteCategory(item)}
+                        title="Удалить"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  ))
                 )}
               </div>
             </div>
@@ -1494,6 +1525,14 @@ async function saveCategory(event) {
                         title="Редактировать"
                       >
                         <Pencil size={16} />
+                      </button>
+
+                      <button
+                        style={deleteButton}
+                        onClick={() => deleteOffer(o)}
+                        title="Удалить этот размер"
+                      >
+                        <Trash2 size={16} />
                       </button>
 
                       {o.status === 'hidden' ? (
