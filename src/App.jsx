@@ -8,6 +8,9 @@ import { supabase } from './supabase';
 
 const FAVORITES_KEY = 'kind-of-green-favorites';
 
+const MAX_URL = 'https://max.ru/u/f9LHodD0cOJyTw6rRDzloGk5WuqWxdMjoglfpIdytG357_M2CCEnIeSjK0A';
+const TELEGRAM_URL = 'https://t.me/vilky_way';
+
 function makeSlug(value) {
   const transliteration = {
     а: 'a', б: 'b', в: 'v', г: 'g', д: 'd',
@@ -227,6 +230,7 @@ export default function App() {
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [lightboxIndex, setLightboxIndex] = useState(null);
   const [showDelivery, setShowDelivery] = useState(false);
+  const [showContacts, setShowContacts] = useState(false);
 
   const [session, setSession] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -572,6 +576,7 @@ export default function App() {
 
       if (match) {
         setShowDelivery(false);
+        setShowContacts(false);
         setSelectedPlantId(decodeURIComponent(match[1]));
         setSelectedVariantId(null);
         setLightboxIndex(null);
@@ -580,11 +585,19 @@ export default function App() {
         setSelectedVariantId(null);
         setLightboxIndex(null);
         setShowDelivery(true);
+        setShowContacts(false);
+      } else if (hash === '#/contacts') {
+        setSelectedPlantId(null);
+        setSelectedVariantId(null);
+        setLightboxIndex(null);
+        setShowDelivery(false);
+        setShowContacts(true);
       } else {
         setSelectedPlantId(null);
         setSelectedVariantId(null);
         setLightboxIndex(null);
         setShowDelivery(false);
+        setShowContacts(false);
       }
     }
 
@@ -595,6 +608,7 @@ export default function App() {
 
   function openPlant(plant) {
     setShowDelivery(false);
+    setShowContacts(false);
     setSelectedPlantId(plant.id);
 
     const favoriteVariant = plant.variants.find(v => favorites.includes(v.id));
@@ -611,6 +625,7 @@ export default function App() {
     setSelectedPlantId(null);
     setSelectedVariantId(null);
     setShowDelivery(false);
+    setShowContacts(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -618,12 +633,25 @@ export default function App() {
     setSelectedPlantId(null);
     setSelectedVariantId(null);
     setLightboxIndex(null);
+    setShowContacts(false);
+    setShowDelivery(true);
     window.location.hash = '/delivery';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function openContacts() {
+    setSelectedPlantId(null);
+    setSelectedVariantId(null);
+    setLightboxIndex(null);
+    setShowDelivery(false);
+    setShowContacts(true);
+    window.location.hash = '/contacts';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function backToCatalog() {
     setShowDelivery(false);
+    setShowContacts(false);
     setSelectedPlantId(null);
     setSelectedVariantId(null);
     setLightboxIndex(null);
@@ -1160,6 +1188,7 @@ export default function App() {
             setSelectedVariantId(null);
             setLightboxIndex(null);
             setShowDelivery(false);
+            setShowContacts(false);
           }}
         >
           <span className="brand-icon"><Leaf size={21} /></span>
@@ -1186,6 +1215,17 @@ export default function App() {
           justifyContent: 'flex-end'
         }}>
           <span className="top-note">Небольшая коллекция растений</span>
+
+          <a
+            href="#/contacts"
+            onClick={event => {
+              event.preventDefault();
+              openContacts();
+            }}
+            style={deliveryLink}
+          >
+            Контакты
+          </a>
 
           <a
             href="#/delivery"
@@ -1728,7 +1768,51 @@ export default function App() {
       ) : (
         <>
           <main>
-            {showDelivery ? (
+            {showContacts ? (
+              <section className="catalog">
+                <button style={backButton} onClick={backToCatalog}>
+                  <ArrowLeft size={16} /> Назад в каталог
+                </button>
+
+                <div style={{ maxWidth: 760, margin: '20px auto 60px' }}>
+                  <p className="eyebrow">KIND OF GREEN</p>
+
+                  <h1 style={detailTitle}>Контакты</h1>
+
+                  <p className="description" style={{ marginTop: 20 }}>
+                    Если понравилось растение или возникли вопросы — напишите мне.
+                  </p>
+
+                  <div style={deliveryCard}>
+                    <h2 style={deliveryHeading}>Связаться со мной</h2>
+
+                    <p className="description">
+                      Выберите удобный мессенджер:
+                    </p>
+
+                    <div style={contactButtons}>
+                      <a
+                        href={MAX_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={contactButton}
+                      >
+                        MAX
+                      </a>
+
+                      <a
+                        href={TELEGRAM_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={contactButton}
+                      >
+                        Telegram
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : showDelivery ? (
               <section className="catalog">
                 <button style={backButton} onClick={backToCatalog}>
                   <ArrowLeft size={16} /> Назад в каталог
@@ -2472,6 +2556,27 @@ const routeButton = {
   color: '#fff',
   textDecoration: 'none',
   fontSize: 13
+};
+
+const contactButtons = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 12,
+  marginTop: 20
+};
+
+const contactButton = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 120,
+  padding: '13px 22px',
+  borderRadius: 5,
+  background: '#405c43',
+  color: '#fff',
+  textDecoration: 'none',
+  fontSize: 14,
+  fontWeight: 500
 };
 
 const adminTabs = {
