@@ -465,7 +465,13 @@ export default function App() {
         .order('created_at', { ascending: false })
     ]);
 
-    if (cats) setCategories(cats);
+   if (cats) {
+  setCategories(
+    [...cats].sort((a, b) =>
+      a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+    )
+  );
+}
 
     if (error) {
       console.error('Ошибка загрузки каталога:', error);
@@ -560,7 +566,11 @@ export default function App() {
 
     setAdminPlants(plantsData || []);
     setAdminOffers(offersData || []);
-    setAdminCategories(categoryData || []);
+    setAdminCategories(
+  [...(categoryData || [])].sort((a, b) =>
+    a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+  )
+);
   }
 
   useEffect(() => {
@@ -1132,9 +1142,11 @@ async function saveCategory(event) {
                 {adminCategories.length === 0 ? (
                   <p className="empty">Категорий пока нет.</p>
                 ) : (
-                  [...adminCategories]
-                    .sort((a, b) => a.sort_order - b.sort_order)
-                    .map((item, index, array) => (
+                 [...adminCategories]
+  .sort((a, b) =>
+    a.name.localeCompare(b.name, 'ru', { sensitivity: 'base' })
+  )
+  .map(item => (
                       <div key={item.id} style={categoryRow}>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <strong>{item.name}</strong>
@@ -1143,24 +1155,7 @@ async function saveCategory(event) {
                           </div>
                         </div>
 
-                        <button
-                          style={iconButton}
-                          onClick={() => moveCategory(item, -1)}
-                          disabled={index === 0}
-                          title="Переместить вверх"
-                        >
-                          <ChevronUp size={17} />
-                        </button>
-
-                        <button
-                          style={iconButton}
-                          onClick={() => moveCategory(item, 1)}
-                          disabled={index === array.length - 1}
-                          title="Переместить вниз"
-                        >
-                          <ChevronDown size={17} />
-                        </button>
-
+                       
                         <button
                           style={iconButton}
                           onClick={() => startEditCategory(item)}
