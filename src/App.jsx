@@ -758,7 +758,7 @@ export default function App() {
           { fps: 10, qrbox: { width: 240, height: 240 } },
           decodedText => {
             if (!active) return;
-            const match = decodedText.match(/#\\/offer\\/([^/?#]+)/);
+            const match = decodedText.match(/#\/offer\/([^/?#]+)/);
             if (!match) {
               setScannerError('Это не QR-код предложения Kind of Green.');
               return;
