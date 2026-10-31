@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Html5Qrcode } from 'html5-qrcode';
 import {
@@ -245,7 +245,7 @@ export default function App() {
   const [qrLoading, setQrLoading] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerError, setScannerError] = useState('');
-  const [scannerInstance, setScannerInstance] = useState(null);
+  const scannerRef = useRef(null);
   const [routeOfferId, setRouteOfferId] = useState(null);
 
   const [session, setSession] = useState(null);
@@ -722,27 +722,43 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!scannerOpen) {
-      if (scannerInstance) {
-        scannerInstance.stop().catch(() => {}).finally(() => {
-          scannerInstance.clear();
-          setScannerInstance(null);
-        });
-      }
-      return;
-    }
+    if (!scannerOpen) return;
+
     let active = true;
-    let instance;
+    let instance = null;
+
+    async function disposeScanner(scanner) {
+      if (!scanner) return;
+      try {
+        // Html5Qrcode нельзя очищать до остановки активной камеры.
+        if (scanner.getState?.() === 2) {
+          await scanner.stop();
+        }
+      } catch (stopError) {
+        console.warn('Не удалось штатно остановить QR-сканер:', stopError);
+      }
+      try {
+        scanner.clear();
+      } catch (clearError) {
+        // После отказа в разрешении сканер может не успеть создать DOM-разметку.
+        console.warn('Не удалось очистить QR-сканер:', clearError);
+      }
+    }
+
     const timer = window.setTimeout(async () => {
       try {
+        const reader = document.getElementById('kind-green-qr-reader');
+        if (!reader || !active) return;
+
         instance = new Html5Qrcode('kind-green-qr-reader');
-        if (!active) return;
-        setScannerInstance(instance);
+        scannerRef.current = instance;
+
         await instance.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 240, height: 240 } },
-          async decodedText => {
-            const match = decodedText.match(/#\/offer\/([^/?#]+)/);
+          decodedText => {
+            if (!active) return;
+            const match = decodedText.match(/#\\/offer\\/([^/?#]+)/);
             if (!match) {
               setScannerError('Это не QR-код предложения Kind of Green.');
               return;
@@ -758,22 +774,26 @@ export default function App() {
         const denied = error?.name === 'NotAllowedError' ||
           error?.name === 'PermissionDeniedError' ||
           /permission|denied|notallowed|отказано|доступ.*камер/i.test(error?.message || String(error));
+
         setScannerError(
           denied
-            ? 'Нет доступа к камере. Разрешите использование камеры в настройках сайта или браузера, затем нажмите «Сканирование QR» ещё раз.'
-            : 'Не удалось запустить камеру. Проверьте, что сайт открыт по HTTPS и браузеру разрешён доступ к камере. ' + (error?.message || error)
+            ? 'Браузер не получил доступ к камере. Разрешите камеру для этого сайта в настройках браузера и нажмите «Попробовать снова».'
+            : 'Не удалось запустить камеру. Проверьте разрешение на использование камеры и подключение по HTTPS. ' + (error?.message || error)
         );
-        if (instance) {
-          try { await instance.stop(); } catch {}
-          try { instance.clear(); } catch {}
-          if (active) setScannerInstance(null);
-        }
+
+        // Сразу освобождаем неудачно созданный экземпляр, но оставляем окно ошибки.
+        await disposeScanner(instance);
+        if (scannerRef.current === instance) scannerRef.current = null;
+        instance = null;
       }
     }, 120);
+
     return () => {
       active = false;
       window.clearTimeout(timer);
-      if (instance) instance.stop().catch(() => {}).finally(() => instance.clear());
+      const scanner = instance;
+      if (scannerRef.current === scanner) scannerRef.current = null;
+      void disposeScanner(scanner);
     };
   }, [scannerOpen]);
 
