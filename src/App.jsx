@@ -1698,6 +1698,34 @@ export default function App() {
           {adminError && <p style={errorText}>{adminError}</p>}
           {adminMessage && <p style={successText}>{adminMessage}</p>}
 
+          {adminTab === 'orders' && (
+            <div style={adminPanel}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                <h3 style={{ marginTop: 0 }}>Заказы</h3>
+                <button type="button" style={smallActionButton} onClick={loadAdminOrders}>Обновить</button>
+              </div>
+              {selectedOrder ? (
+                <>
+                  <button type="button" style={headerButton} onClick={() => setSelectedOrder(null)}><ArrowLeft size={15} /> К списку</button>
+                  <h2>Заказ №{selectedOrder.order_number}</h2>
+                  <p style={mutedText}>{new Date(selectedOrder.created_at).toLocaleString('ru-RU')} · {selectedOrder.status}</p>
+                  <div style={offerRow}><div><strong>{selectedOrder.customer_name || 'Имя не указано'}</strong><div>{selectedOrder.customer_phone}</div><div>{selectedOrder.customer_email}</div><div>{selectedOrder.delivery_method === 'pickup' ? 'Самовывоз' : 'Курьерская доставка'}</div>{selectedOrder.customer_comment && <p>{selectedOrder.customer_comment}</p>}</div></div>
+                  {(selectedOrder.order_items || []).map(item => <div key={item.id} style={offerRow}><div style={{ flex: 1 }}><strong>{item.plant_name}</strong><div style={mutedText}>{item.article_code || '—'} · {item.size_label || 'Размер не указан'}</div></div><span>{item.quantity} × {formatPrice(item.unit_price)}</span><strong>{formatPrice(item.line_total)}</strong></div>)}
+                  <h2 style={{ textAlign: 'right' }}>Итого: {formatPrice(selectedOrder.total)}</h2>
+                  <label style={fieldLabel}>Статус заказа</label>
+                  <select style={fieldInput} value={selectedOrder.status} onChange={async e => { const status=e.target.value; const {error}=await supabase.from('orders').update({status}).eq('id',selectedOrder.id); if(error) setAdminError(error.message); else { setSelectedOrder(v=>({...v,status})); await loadAdminOrders(); } }}>
+                    <option value="new">Новый</option><option value="confirmed">Подтверждён</option><option value="preparing">Готовится</option><option value="completed">Завершён</option><option value="cancelled">Отменён</option>
+                  </select>
+                </>
+              ) : adminOrders.length ? adminOrders.map(order => (
+                <button type="button" key={order.id} onClick={() => openOrderDetails(order)} style={{ ...offerRow, width: '100%', textAlign: 'left', cursor: 'pointer', background: '#fff' }}>
+                  <div style={{ flex: 1 }}><strong>Заказ №{order.order_number}</strong><div style={mutedText}>{order.customer_name || order.customer_email} · {new Date(order.created_at).toLocaleDateString('ru-RU')}</div></div>
+                  <span>{order.items_count} шт.</span><strong>{formatPrice(order.total)}</strong><span>{order.status}</span>
+                </button>
+              )) : <p className="empty">Заказов пока нет.</p>}
+            </div>
+          )}
+
           {adminTab === 'discounts' && (
             <div style={adminPanel}><h3 style={{ marginTop: 0 }}>Скидки на размеры</h3><p style={mutedText}>Новая цена должна быть ниже обычной. Чтобы убрать скидку, очисти поле и сохрани.</p>
               {filteredAdminOffers.map(o => { const d = discountDrafts[o.id] || { discount_price: '', discount_reason: '' }; return <div key={o.id} style={offerRow}><div style={{ flex: 1, minWidth: 190 }}><strong>{o.plants?.name || 'Растение'}</strong><div style={mutedText}>Обычная цена: {formatPrice(o.price)} · {o.pot_diameter || '—'} см</div><input type="number" min="0.01" step="0.01" placeholder="Цена со скидкой" style={{ ...fieldInput, marginTop: 8 }} value={d.discount_price} onChange={e => setDiscountDrafts(v => ({ ...v, [o.id]: { ...d, discount_price: e.target.value } }))} /><input placeholder="Причина скидки (необязательно)" style={{ ...fieldInput, marginTop: 8 }} value={d.discount_reason} onChange={e => setDiscountDrafts(v => ({ ...v, [o.id]: { ...d, discount_reason: e.target.value } }))} /></div><button style={smallActionButton} onClick={async () => { const price = d.discount_price === '' ? null : Number(d.discount_price); if (price !== null && (!Number.isFinite(price) || price <= 0 || price >= Number(o.price))) { setAdminError('Цена со скидкой должна быть ниже обычной и больше нуля.'); return; } const { error } = await supabase.from('plant_offers').update({ discount_price: price, discount_reason: price === null ? null : (d.discount_reason.trim() || null) }).eq('id', o.id); if (error) { setAdminError(error.message); return; } setAdminMessage('Скидка сохранена.'); await loadAdminData(); await loadCatalog(); }}>Сохранить</button></div>; })}
@@ -3022,23 +3050,17 @@ export default function App() {
               </div>
 
               <h2 style={modalTitle}>
-                {resetEmailMode
-                  ? 'Восстановление пароля'
-                  : 'Вход администратора'}
+                {resetEmailMode ? 'Восстановление пароля' : registerMode ? 'Создание аккаунта' : 'Вход в аккаунт'}
               </h2>
 
               <p style={mutedText}>
-                {resetEmailMode
-                  ? 'Отправим ссылку для создания нового пароля'
-                  : 'Управление каталогом растений'}
+                {resetEmailMode ? 'Отправим ссылку для создания нового пароля' : registerMode ? 'Телефон нужен для связи и согласования заказа. Данные конфиденциальны и используются только для его оформления.' : 'Войди, чтобы оформить заказ или управлять каталогом.'}
               </p>
             </div>
 
             <form
               onSubmit={
-                resetEmailMode
-                  ? handlePasswordResetRequest
-                  : handleLogin
+                resetEmailMode ? handlePasswordResetRequest : registerMode ? handleRegister : handleLogin
               }
             >
               <label style={fieldLabel}>Электронная почта</label>
@@ -3051,6 +3073,16 @@ export default function App() {
                 placeholder="name@example.com"
                 style={fieldInput}
               />
+
+              {!resetEmailMode && registerMode && (
+                <>
+                  <label style={fieldLabel}>Имя</label>
+                  <input style={fieldInput} value={registerName} onChange={e => setRegisterName(e.target.value)} placeholder="Имя" />
+                  <label style={fieldLabel}>Телефон *</label>
+                  <input required type="tel" style={fieldInput} value={registerPhone} onChange={e => setRegisterPhone(e.target.value)} placeholder="+7 900 000-00-00" />
+                  <p style={mutedText}>Телефон понадобится, чтобы подтвердить заказ и согласовать получение. Мы не публикуем номер и не используем его для рассылок.</p>
+                </>
+              )}
 
               {!resetEmailMode && (
                 <>
@@ -3073,7 +3105,7 @@ export default function App() {
               <button type="submit" disabled={authLoading} style={submitButton}>
                 {authLoading
                   ? 'Подожди…'
-                  : resetEmailMode ? 'Отправить письмо' : 'Войти'}
+                  : resetEmailMode ? 'Отправить письмо' : registerMode ? 'Зарегистрироваться' : 'Войти'}
               </button>
             </form>
 
@@ -3090,18 +3122,13 @@ export default function App() {
                 >
                   Вернуться ко входу
                 </button>
+              ) : registerMode ? (
+                <button type="button" onClick={() => { setRegisterMode(false); setAuthError(''); setAuthMessage(''); }} style={textButton}>Уже есть аккаунт? Войти</button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setResetEmailMode(true);
-                    setAuthError('');
-                    setAuthMessage('');
-                  }}
-                  style={textButton}
-                >
-                  Забыли пароль?
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <button type="button" onClick={() => { setResetEmailMode(true); setAuthError(''); setAuthMessage(''); }} style={textButton}>Забыли пароль?</button>
+                  <button type="button" onClick={() => { setRegisterMode(true); setResetEmailMode(false); setAuthError(''); setAuthMessage(''); }} style={textButton}>Создать аккаунт</button>
+                </div>
               )}
             </div>
           </div>
