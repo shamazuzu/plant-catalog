@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import {
   Search, Leaf, Heart, SlidersHorizontal, Sprout, Lock, LogOut, X,
   Plus, Pencil, Eye, EyeOff, ImagePlus, ArrowLeft, Save,
-  Trash2, ChevronLeft, ChevronRight
+  Trash2, ChevronLeft, ChevronRight, ShoppingBag, Minus
 } from 'lucide-react';
 import { supabase } from './supabase';
 
@@ -207,6 +207,120 @@ export default function App() {
     }
   });
   const [showFavorites, setShowFavorites] = useState(false);
+  const [cart, setCart] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('kind-green-cart') || '{}') || {}; } catch { return {}; }
+  });
+  const [cartOpen, setCartOpen] = useState(false);
+  const [registerMode, setRegisterMode] = useState(false);
+  const [registerPhone, setRegisterPhone] = useState('');
+  const [registerName, setRegisterName] = useState('');
+  const [checkoutName, setCheckoutName] = useState('');
+  const [checkoutComment, setCheckoutComment] = useState('');
+  const [deliveryMethod, setDeliveryMethod] = useState('pickup');
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [adminOrders, setAdminOrders] = useState([]);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+
+  useEffect(() => {
+    try { localStorage.setItem('kind-green-cart', JSON.stringify(cart)); }
+    catch (error) { console.error('Не удалось сохранить корзину:', error); }
+  }, [cart]);
+
+  const cartLines = useMemo(() => Object.entries(cart).map(([offerId, quantity]) => {
+    const plant = plants.find(p => p.variants?.some(v => v.id === offerId));
+    const offer = plant?.variants?.find(v => v.id === offerId);
+    if (!offer) return null;
+    const price = Number(offer.discount_price) > 0 && Number(offer.discount_price) < Number(offer.price)
+      ? Number(offer.discount_price) : Number(offer.price);
+    return { offerId, quantity: Number(quantity), plant, offer, price, lineTotal: price * Number(quantity) };
+  }).filter(Boolean), [cart, plants]);
+  const cartTotal = cartLines.reduce((sum, item) => sum + item.lineTotal, 0);
+  const cartCount = cartLines.reduce((sum, item) => sum + item.quantity, 0);
+
+  useEffect(() => {
+    if (!session?.user || !supabase) return;
+    let cancelled = false;
+    (async () => {
+      const { data: profile } = await supabase.from('customer_profiles').select('phone,full_name')
+        .eq('user_id', session.user.id).maybeSingle();
+      if (!cancelled && profile) { setCustomerPhone(profile.phone || ''); setCheckoutName(profile.full_name || ''); }
+      const { data: saved } = await supabase.from('customer_cart_items').select('offer_id,quantity')
+        .eq('user_id', session.user.id);
+      if (cancelled) return;
+      const merged = { ...cart };
+      (saved || []).forEach(row => { merged[row.offer_id] = Math.max(Number(merged[row.offer_id] || 0), Number(row.quantity)); });
+      setCart(merged);
+      const rows = Object.entries(merged).map(([offer_id, quantity]) => ({ user_id: session.user.id, offer_id, quantity }));
+      if (rows.length) await supabase.from('customer_cart_items').upsert(rows, { onConflict: 'user_id,offer_id' });
+    })();
+    return () => { cancelled = true; };
+  }, [session?.user?.id]);
+
+  async function persistCart(nextCart) {
+    setCart(nextCart);
+    if (session?.user && supabase) {
+      await supabase.from('customer_cart_items').delete().eq('user_id', session.user.id);
+      const rows = Object.entries(nextCart).map(([offer_id, quantity]) => ({ user_id: session.user.id, offer_id, quantity }));
+      if (rows.length) await supabase.from('customer_cart_items').upsert(rows, { onConflict: 'user_id,offer_id' });
+    }
+  }
+
+  function addToCart(offer) {
+    if (!offer?.id || offer.status !== 'available' || Number(offer.stock) < 1) return;
+    persistCart({ ...cart, [offer.id]: Math.min(Number(offer.stock), Number(cart[offer.id] || 0) + 1) });
+  }
+
+  function updateCartQuantity(offerId, quantity) {
+    const item = cartLines.find(line => line.offerId === offerId);
+    if (!item) return;
+    const next = { ...cart };
+    if (quantity <= 0) delete next[offerId];
+    else next[offerId] = Math.min(Number(item.offer.stock), Math.max(1, Number(quantity) || 1));
+    persistCart(next);
+  }
+
+  async function loadAdminOrders() {
+    const { data, error } = await supabase.from('orders')
+      .select('id,order_number,customer_name,customer_email,customer_phone,delivery_method,status,items_count,total,created_at')
+      .order('created_at', { ascending: false });
+    if (error) setAdminError('Не удалось загрузить заказы: ' + error.message);
+    else setAdminOrders(data || []);
+  }
+
+  async function openOrderDetails(order) {
+    const { data, error } = await supabase.from('orders').select('*,order_items(*)').eq('id', order.id).single();
+    if (error) setAdminError(error.message);
+    else setSelectedOrder(data);
+  }
+
+  async function submitOrder(event) {
+    event.preventDefault();
+    setCheckoutMessage('');
+    if (!session?.user) { setRegisterMode(true); setLoginOpen(true); return; }
+    if (!customerPhone) { setCheckoutMessage('В профиле не указан телефон.'); return; }
+    setCheckoutLoading(true);
+    const { data, error } = await supabase.rpc('place_order', {
+      p_items: cartLines.map(item => ({ offer_id: item.offerId, quantity: item.quantity })),
+      p_delivery_method: deliveryMethod,
+      p_customer_name: checkoutName || null,
+      p_customer_comment: checkoutComment || null
+    });
+    if (error) {
+      setCheckoutMessage('Не удалось оформить заказ: ' + error.message);
+      setCheckoutLoading(false);
+      await loadCatalog();
+      return;
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    const { error: notifyError } = await supabase.functions.invoke('order-notifications', { body: { order_id: result.id } });
+    if (notifyError) console.warn('Уведомление не отправлено:', notifyError);
+    await persistCart({});
+    await loadCatalog();
+    setCheckoutMessage('Заказ №' + result.order_number + ' принят. Скоро свяжемся для подтверждения.');
+    setCheckoutLoading(false);
+  }
 
   useEffect(() => {
     try {
@@ -412,41 +526,38 @@ export default function App() {
     event.preventDefault();
     setAuthError('');
     setAuthMessage('');
-
-    if (!supabase) {
-      setAuthError('Нет подключения к базе данных.');
-      return;
-    }
-
+    if (!supabase) { setAuthError('Нет подключения к базе данных.'); return; }
     setAuthLoading(true);
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password
-    });
-
-    if (error) {
-      setAuthError('Не удалось войти. Проверь почту и пароль.');
-      setAuthLoading(false);
-      return;
-    }
-
-    const { data: adminData, error: adminError } =
-      await supabase.rpc('is_admin');
-
-    if (adminError || adminData !== true) {
-      console.error('Ошибка проверки администратора:', adminError);
-      await supabase.auth.signOut();
-      setAuthError('Не удалось подтвердить права администратора.');
-      setAuthLoading(false);
-      return;
-    }
-
+    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    if (error) { setAuthError('Не удалось войти. Проверь почту и пароль.'); setAuthLoading(false); return; }
+    const admin = await checkAdmin(data.user);
     setSession(data.session);
-    setIsAdmin(true);
     setLoginOpen(false);
+    setRegisterMode(false);
     setPassword('');
     setAuthLoading(false);
+    if (admin) { setAdminOpen(true); setAdminTab('plants'); await loadAdminData(); }
+  }
+
+  async function handleRegister(event) {
+    event.preventDefault();
+    setAuthError('');
+    setAuthMessage('');
+    if (!supabase) { setAuthError('Нет подключения к базе данных.'); return; }
+    if (!/^\\+?[0-9()\\-\\s]{7,20}$/.test(registerPhone.trim())) { setAuthError('Укажи корректный номер телефона.'); return; }
+    setAuthLoading(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(), password,
+      options: { data: { phone: registerPhone.trim(), full_name: registerName.trim() } }
+    });
+    setAuthLoading(false);
+    if (error) { setAuthError('Не удалось зарегистрироваться: ' + error.message); return; }
+    setCustomerPhone(registerPhone.trim());
+    setCheckoutName(registerName.trim());
+    setRegisterMode(false);
+    setPassword('');
+    if (data.session) { setSession(data.session); setLoginOpen(false); }
+    else setAuthMessage('Проверь почту и подтверди регистрацию. Корзина сохранится в этом браузере.');
   }
 
   async function handlePasswordResetRequest(event) {
@@ -1487,6 +1598,9 @@ export default function App() {
           >
             Доставка и самовывоз
           </a>
+          <button type="button" style={headerButton} onClick={() => { setCartOpen(true); setAdminOpen(false); }}>
+            <ShoppingBag size={16} /> Корзина ({cartCount})
+          </button>
 
           {authReady && (
             isAdmin ? (
@@ -1554,6 +1668,7 @@ export default function App() {
               Растения и размеры
             </button>
 
+            <button onClick={() => { setAdminTab('orders'); setSelectedOrder(null); loadAdminOrders(); }} style={adminTab === 'orders' ? activeTabButton : tabButton}>Заказы</button>
             <button onClick={() => setAdminTab('discounts')} style={adminTab === 'discounts' ? activeTabButton : tabButton}>Скидки</button>
             <button onClick={() => { setAdminTab('campaigns'); setCampaignForm({ id: null, title: '', content: '', is_published: true }); }} style={adminTab === 'campaigns' ? activeTabButton : tabButton}>Акции</button>
             <button
@@ -2456,6 +2571,11 @@ export default function App() {
                         </div>
                         {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) && <p style={{ color: '#b64b42', fontSize: 13, fontWeight: 600 }}>Скидка{selectedVariant.discount_reason ? `: ${selectedVariant.discount_reason}` : ''}</p>}
 
+                        {selectedVariant.status === 'available' && Number(selectedVariant.stock) > 0 && (
+                          <button type="button" style={submitButton} onClick={() => addToCart(selectedVariant)}>
+                            <ShoppingBag size={16} /> Добавить в корзину
+                          </button>
+                        )}
                         {selectedVariant.status === 'available' &&
                           Number(selectedVariant.stock) > 0 &&
                           selectedVariant.avito_url && (
@@ -2480,6 +2600,31 @@ export default function App() {
                   </div>
                 </div>
               </section>
+            ) : cartOpen ? (
+              <main className="catalog" style={{ maxWidth: 900, margin: '40px auto', padding: '0 20px' }}>
+                <div className="section-heading"><div><p className="eyebrow">ВАШ ВЫБОР</p><h2>Корзина</h2></div><button type="button" style={headerButton} onClick={() => setCartOpen(false)}><ArrowLeft size={15} /> В каталог</button></div>
+                {cartLines.length ? <>
+                  {cartLines.map(item => <div key={item.offerId} style={{ ...offerRow, alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}><strong>{item.plant.name}</strong><div style={mutedText}>{item.offer.pot_diameter ? item.offer.pot_diameter + ' см' : 'Размер не указан'} · {item.offer.article_code || '—'}</div><div>{formatPrice(item.price)} / шт.</div></div>
+                    <button type="button" style={iconButton} onClick={() => updateCartQuantity(item.offerId, item.quantity - 1)}><Minus size={15} /></button><strong>{item.quantity}</strong><button type="button" style={iconButton} disabled={item.quantity >= Number(item.offer.stock)} onClick={() => updateCartQuantity(item.offerId, item.quantity + 1)}><Plus size={15} /></button>
+                    <strong>{formatPrice(item.lineTotal)}</strong><button type="button" style={deleteButton} onClick={() => updateCartQuantity(item.offerId, 0)}><Trash2 size={16} /></button>
+                  </div>)}
+                  <h2 style={{ textAlign: 'right' }}>Итого: {formatPrice(cartTotal)}</h2>
+                  <form onSubmit={submitOrder} style={adminPanel}>
+                    <h3>Оформление заказа</h3>
+                    {!session?.user ? <p style={mutedText}>Для оформления потребуется регистрация и подтверждение почты. Корзина сохранится и привяжется к аккаунту.</p> : <>
+                      <label style={fieldLabel}>Имя</label><input style={fieldInput} value={checkoutName} onChange={e => setCheckoutName(e.target.value)} />
+                      <label style={fieldLabel}>Телефон</label><input style={fieldInput} value={customerPhone} readOnly />
+                      <label style={fieldLabel}>Электронная почта</label><input style={fieldInput} value={session.user.email || ''} readOnly />
+                      <label style={fieldLabel}>Способ получения</label><select style={fieldInput} value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value)}><option value="pickup">Самовывоз</option><option value="courier">Курьерская доставка — обсудим отдельно</option></select>
+                      <label style={fieldLabel}>Комментарий</label><textarea style={fieldInput} rows="3" value={checkoutComment} onChange={e => setCheckoutComment(e.target.value)} />
+                    </>}
+                    {checkoutMessage && <p style={successText}>{checkoutMessage}</p>}
+                    <button type="submit" style={submitButton} disabled={checkoutLoading}>{checkoutLoading ? 'Оформляем…' : session?.user ? 'Подтвердить заказ без оплаты' : 'Зарегистрироваться и продолжить'}</button>
+                    <p style={mutedText}>Оплаты на сайте нет. Наличие и передачу заказа согласуем отдельно.</p>
+                  </form>
+                </> : <p className="empty">Корзина пока пуста.</p>}
+              </main>
             ) : (
               <>
                 <section className="hero">
