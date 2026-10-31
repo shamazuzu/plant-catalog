@@ -545,7 +545,7 @@ export default function App() {
       return;
     }
 
-    const [{ data: cats }, { data, error }] = await Promise.all([
+    const [{ data: cats }, { data, error }, { data: publicCampaigns }] = await Promise.all([
       supabase
         .from('plant_categories')
         .select('id,name')
@@ -566,9 +566,11 @@ export default function App() {
           offer_photos(storage_path,sort_order)
         `)
         .in('status', ['available', 'sold'])
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      supabase.from('campaign_posts').select('id,title,content,is_published,sort_order,created_at').eq('is_published', true).order('sort_order', { ascending: true })
     ]);
 
+    if (publicCampaigns) setCampaigns(publicCampaigns);
     if (cats) setCategories(sortCategories(cats));
 
     if (error) {
@@ -2538,7 +2540,7 @@ export default function App() {
                   </div>
 
                   <div className="chips">
-                    {['Все растения', 'Скидки', ...categories.map(c => c.name)].map(c => (
+                    {['Скидки', 'Все растения', ...categories.map(c => c.name)].map(c => (
                       <button
                         key={c}
                         onClick={() => setCategory(c)}
@@ -2625,7 +2627,7 @@ export default function App() {
                                 />
                               </button>
 
-                              <span className="photo-tag">В наличии</span>
+                              {firstVariant?.discount_price && Number(firstVariant.discount_price) < Number(firstVariant.price) ? <span className="photo-tag" style={{ background: "#b64b42" }}>Скидка</span> : <span className="photo-tag">В наличии</span>}
                             </div>
 
                             <div className="plant-info">
