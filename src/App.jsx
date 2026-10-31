@@ -274,6 +274,8 @@ export default function App() {
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
   const [newPhotos, setNewPhotos] = useState([]);
+  const [existingPhotos, setExistingPhotos] = useState([]);
+  const [photosToDelete, setPhotosToDelete] = useState([]);
   const [saving, setSaving] = useState(false);
   const [adminMessage, setAdminMessage] = useState('');
   const [adminError, setAdminError] = useState('');
@@ -1024,6 +1026,8 @@ export default function App() {
     setEditingId(null);
     setForm(emptyForm);
     setNewPhotos([]);
+    setExistingPhotos([]);
+    setPhotosToDelete([]);
     setAdminMessage('');
     setAdminError('');
   }
@@ -1044,6 +1048,10 @@ export default function App() {
       status: offer.status || 'available'
     });
 
+    setExistingPhotos(
+      [...(offer.offer_photos || [])].sort((a, b) => a.sort_order - b.sort_order)
+    );
+    setPhotosToDelete([]);
     setNewPhotos([]);
     setAdminMessage('');
     setAdminError('');
@@ -1153,6 +1161,21 @@ export default function App() {
         offerId = created.id;
       }
 
+      if (photosToDelete.length > 0) {
+        const paths = photosToDelete.map(photo => photo.storage_path).filter(Boolean);
+        const { error: recordsError } = await supabase
+          .from('offer_photos')
+          .delete()
+          .eq('offer_id', offerId)
+          .in('storage_path', paths);
+        if (recordsError) throw recordsError;
+
+        const { error: filesError } = await supabase.storage
+          .from('plant-photos')
+          .remove(paths);
+        if (filesError) throw filesError;
+      }
+
       for (let i = 0; i < newPhotos.length; i++) {
         const file = newPhotos[i];
         const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -1184,6 +1207,8 @@ export default function App() {
       setEditingId(null);
       setForm(emptyForm);
       setNewPhotos([]);
+      setExistingPhotos([]);
+      setPhotosToDelete([]);
 
       await loadAdminData();
       await loadCatalog();
@@ -1853,9 +1878,42 @@ export default function App() {
                     />
                   </label>
 
+                  {editingId && existingPhotos.length > 0 && (
+                    <div style={{ marginTop: 16 }}>
+                      <p style={{ ...mutedText, marginBottom: 9 }}>Текущие фотографии</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(100px,1fr))', gap: 10 }}>
+                        {existingPhotos.map(photo => (
+                          <div key={photo.storage_path} style={{ position: 'relative' }}>
+                            <img
+                              src={getPhotoUrl(photo.storage_path)}
+                              alt="Фотография растения"
+                              style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 6, border: '1px solid #e3e8df' }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotosToDelete(current => [...current, photo]);
+                                setExistingPhotos(current => current.filter(item => item.storage_path !== photo.storage_path));
+                              }}
+                              style={{ position: 'absolute', top: 5, right: 5, width: 27, height: 27, border: 0, borderRadius: '50%', background: '#fff', color: '#b64b42', cursor: 'pointer', boxShadow: '0 1px 5px #0003' }}
+                              aria-label="Удалить фотографию"
+                              title="Удалить фотографию"
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {photosToDelete.length > 0 && (
+                    <p style={{ fontSize: 12, color: '#b64b42' }}>
+                      Будет удалено фотографий: {photosToDelete.length}
+                    </p>
+                  )}
+
                   {newPhotos.length > 0 && (
                     <p style={{ fontSize: 13, color: '#52634f' }}>
-                      Выбрано файлов: {newPhotos.length}
+                      Выбрано новых файлов: {newPhotos.length}
                     </p>
                   )}
 
