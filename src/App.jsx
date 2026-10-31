@@ -110,6 +110,8 @@ function mapPublicPlants(rows) {
       height_min: offer.height_min,
       height_max: offer.height_max,
       price: offer.price,
+      discount_price: offer.discount_price,
+      discount_reason: offer.discount_reason || '',
       stock: offer.stock,
       status: offer.status,
       description: offer.description_override || '',
@@ -234,6 +236,10 @@ export default function App() {
   const [showDelivery, setShowDelivery] = useState(false);
   const [showContacts, setShowContacts] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showPromotions, setShowPromotions] = useState(false);
+  const [campaigns, setCampaigns] = useState([]);
+  const [campaignForm, setCampaignForm] = useState({ id: null, title: '', content: '', is_published: true });
+  const [discountDrafts, setDiscountDrafts] = useState({});
   const [qrOffer, setQrOffer] = useState(null);
   const [qrImage, setQrImage] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
@@ -549,7 +555,7 @@ export default function App() {
       supabase
         .from('plant_offers')
         .select(`
-          id,plant_id,article_code,price,stock,status,
+          id,plant_id,article_code,price,discount_price,discount_reason,stock,status,
           pot_diameter,height_min,height_max,
           description_override,avito_url,
           plants!inner(
@@ -586,6 +592,8 @@ export default function App() {
       const hash = window.location.hash;
       const offerMatch = hash.match(/^#\/offer\/([^/]+)$/);
       const match = hash.match(/^#\/plant\/([^/]+)$/);
+      if (hash === '#/promotions') { setRouteOfferId(null); setSelectedPlantId(null); setSelectedVariantId(null); setShowDelivery(false); setShowContacts(false); setShowAbout(false); setShowPromotions(true); return; }
+      setShowPromotions(false);
 
       if (offerMatch) {
         setRouteOfferId(decodeURIComponent(offerMatch[1]));
@@ -812,6 +820,8 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function openPromotions() { setSelectedPlantId(null); setSelectedVariantId(null); setShowDelivery(false); setShowContacts(false); setShowAbout(false); setShowPromotions(true); window.location.hash = '/promotions'; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
   function backToCatalog() {
     setShowDelivery(false);
     setShowContacts(false);
@@ -829,7 +839,8 @@ export default function App() {
     const [
       { data: plantsData, error: plantsError },
       { data: offersData, error: offersError },
-      { data: categoryData, error: categoryError }
+      { data: categoryData, error: categoryError },
+      { data: campaignData, error: campaignError }
     ] = await Promise.all([
       supabase
         .from('plants')
@@ -842,7 +853,7 @@ export default function App() {
       supabase
         .from('plant_offers')
         .select(`
-          id,plant_id,title,size_label,article_code,price,stock,
+          id,plant_id,title,size_label,article_code,price,discount_price,discount_reason,stock,
           is_individual,status,description_override,avito_url,
           pot_diameter,height_min,height_max,qr_code,
           plants(name,botanical_name),
@@ -853,13 +864,14 @@ export default function App() {
       supabase
         .from('plant_categories')
         .select('id,name,sort_order,is_active')
-        .order('sort_order', { ascending: true })
+        .order('sort_order', { ascending: true }),
+      supabase.from('campaign_posts').select('id,title,content,is_published,sort_order,created_at').order('sort_order', { ascending: true })
     ]);
 
-    if (plantsError || offersError || categoryError) {
+    if (plantsError || offersError || categoryError || campaignError) {
       setAdminError(
         'Не удалось загрузить данные: ' +
-        (plantsError?.message || offersError?.message || categoryError?.message)
+        (plantsError?.message || offersError?.message || categoryError?.message || campaignError?.message)
       );
       return;
     }
@@ -867,6 +879,8 @@ export default function App() {
     setAdminPlants(plantsData || []);
     setAdminOffers(offersData || []);
     setAdminCategories(sortCategories(categoryData || []));
+    setCampaigns(campaignData || []);
+    setDiscountDrafts(Object.fromEntries((offersData || []).map(o => [o.id, { discount_price: o.discount_price ?? '', discount_reason: o.discount_reason || '' }])));
   }
 
   useEffect(() => {
@@ -1311,8 +1325,8 @@ export default function App() {
     const normalizedQuery = query.trim().toLowerCase();
 
     const filtered = plants.filter(p => {
-      const matchesCategory =
-        category === 'Все растения' || p.category === category;
+      const onSale = p.variants.some(v => v.status === 'available' && Number(v.stock) > 0 && Number(v.discount_price) > 0 && Number(v.discount_price) < Number(v.price));
+      const matchesCategory = category === 'Все растения' || (category === 'Скидки' ? onSale : p.category === category);
 
       const matchesFavorites =
         !showFavorites || p.variants.some(v => favorites.includes(v.id));
@@ -1403,6 +1417,7 @@ export default function App() {
           justifyContent: 'flex-end'
         }}>
           <span className="top-note">Небольшая коллекция растений</span>
+          <a href="#/promotions" onClick={e => { e.preventDefault(); openPromotions(); }} style={deliveryLink}>Акции</a>
           <button type="button" style={headerButton} onClick={startQrScanner}>Сканировать QR</button>
 
           <a
@@ -1504,6 +1519,8 @@ export default function App() {
               Растения и размеры
             </button>
 
+            <button onClick={() => setAdminTab('discounts')} style={adminTab === 'discounts' ? activeTabButton : tabButton}>Скидки</button>
+            <button onClick={() => { setAdminTab('campaigns'); setCampaignForm({ id: null, title: '', content: '', is_published: true }); }} style={adminTab === 'campaigns' ? activeTabButton : tabButton}>Акции</button>
             <button
               onClick={() => {
                 setAdminTab('qr');
@@ -1530,6 +1547,16 @@ export default function App() {
 
           {adminError && <p style={errorText}>{adminError}</p>}
           {adminMessage && <p style={successText}>{adminMessage}</p>}
+
+          {adminTab === 'discounts' && (
+            <div style={adminPanel}><h3 style={{ marginTop: 0 }}>Скидки на размеры</h3><p style={mutedText}>Новая цена должна быть ниже обычной. Чтобы убрать скидку, очисти поле и сохрани.</p>
+              {filteredAdminOffers.map(o => { const d = discountDrafts[o.id] || { discount_price: '', discount_reason: '' }; return <div key={o.id} style={offerRow}><div style={{ flex: 1, minWidth: 190 }}><strong>{o.plants?.name || 'Растение'}</strong><div style={mutedText}>Обычная цена: {formatPrice(o.price)} · {o.pot_diameter || '—'} см</div><input type="number" min="0.01" step="0.01" placeholder="Цена со скидкой" style={{ ...fieldInput, marginTop: 8 }} value={d.discount_price} onChange={e => setDiscountDrafts(v => ({ ...v, [o.id]: { ...d, discount_price: e.target.value } }))} /><input placeholder="Причина скидки (необязательно)" style={{ ...fieldInput, marginTop: 8 }} value={d.discount_reason} onChange={e => setDiscountDrafts(v => ({ ...v, [o.id]: { ...d, discount_reason: e.target.value } }))} /></div><button style={smallActionButton} onClick={async () => { const price = d.discount_price === '' ? null : Number(d.discount_price); if (price !== null && (!Number.isFinite(price) || price <= 0 || price >= Number(o.price))) { setAdminError('Цена со скидкой должна быть ниже обычной и больше нуля.'); return; } const { error } = await supabase.from('plant_offers').update({ discount_price: price, discount_reason: price === null ? null : (d.discount_reason.trim() || null) }).eq('id', o.id); if (error) { setAdminError(error.message); return; } setAdminMessage('Скидка сохранена.'); await loadAdminData(); await loadCatalog(); }}>Сохранить</button></div>; })}
+            </div>
+          )}
+
+          {adminTab === 'campaigns' && (
+            <div style={adminPanel}><h3 style={{ marginTop: 0 }}>{campaignForm.id ? 'Редактировать акцию' : 'Новая акция'}</h3><form onSubmit={async e => { e.preventDefault(); const payload = { title: campaignForm.title.trim(), content: campaignForm.content.trim(), is_published: campaignForm.is_published }; if (!payload.title || !payload.content) return; const q = campaignForm.id ? supabase.from('campaign_posts').update(payload).eq('id', campaignForm.id) : supabase.from('campaign_posts').insert(payload); const { error } = await q; if (error) { setAdminError(error.message); return; } setCampaignForm({ id: null, title: '', content: '', is_published: true }); setAdminMessage('Акция сохранена.'); await loadAdminData(); }}><label style={fieldLabel}>Заголовок</label><input required style={fieldInput} value={campaignForm.title} onChange={e => setCampaignForm(v => ({ ...v, title: e.target.value }))} /><label style={fieldLabel}>Текст акции</label><textarea required rows="5" style={fieldInput} value={campaignForm.content} onChange={e => setCampaignForm(v => ({ ...v, content: e.target.value }))} /><label style={{ ...fieldLabel, display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={campaignForm.is_published} onChange={e => setCampaignForm(v => ({ ...v, is_published: e.target.checked }))} /> Опубликовать</label><button style={smallActionButton}>Сохранить акцию</button></form><h3>Список акций</h3>{campaigns.map(post => <div key={post.id} style={offerRow}><div style={{ flex: 1 }}><strong>{post.title}</strong><div style={mutedText}>{post.is_published ? 'Опубликована' : 'Скрыта'}</div></div><button style={iconButton} onClick={() => setCampaignForm({ id: post.id, title: post.title, content: post.content, is_published: post.is_published })}><Pencil size={16} /></button><button style={deleteButton} onClick={async () => { if (!window.confirm('Удалить акцию?')) return; const { error } = await supabase.from('campaign_posts').delete().eq('id', post.id); if (error) setAdminError(error.message); else await loadAdminData(); }}><Trash2 size={16} /></button></div>)}</div>
+          )}
 
           {adminTab === 'qr' && (
             <div style={adminPanel}>
@@ -2129,6 +2156,8 @@ export default function App() {
                   </p>
                 </div>
               </section>
+            ) : showPromotions ? (
+              <section className="catalog"><button style={backButton} onClick={backToCatalog}><ArrowLeft size={16} /> Назад в каталог</button><div style={{ maxWidth: 850, margin: '20px auto 60px' }}><p className="eyebrow">KIND OF GREEN</p><h1 style={detailTitle}>Акции</h1>{campaigns.filter(p => p.is_published).length ? campaigns.filter(p => p.is_published).map(p => <article key={p.id} style={deliveryCard}><h2 style={deliveryHeading}>{p.title}</h2><p className="description" style={{ whiteSpace: 'pre-wrap' }}>{p.content}</p></article>) : <div className="empty">Сейчас активных акций нет.</div>}</div></section>
             ) : showContacts ? (
               <section className="catalog">
                 <button style={backButton} onClick={backToCatalog}>
@@ -2388,8 +2417,9 @@ export default function App() {
                         </div>
 
                         <div style={detailPrice}>
-                          {formatPrice(selectedVariant.price)}
+                          {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) ? <><span style={{ display: 'block', fontSize: 16, color: '#899187', textDecoration: 'line-through' }}>{formatPrice(selectedVariant.price)}</span>{formatPrice(selectedVariant.discount_price)}</> : formatPrice(selectedVariant.price)}
                         </div>
+                        {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) && <p style={{ color: '#b64b42', fontSize: 13, fontWeight: 600 }}>Скидка{selectedVariant.discount_reason ? `: ${selectedVariant.discount_reason}` : ''}</p>
 
                         {selectedVariant.status === 'available' &&
                           Number(selectedVariant.stock) > 0 &&
@@ -2508,7 +2538,7 @@ export default function App() {
                   </div>
 
                   <div className="chips">
-                    {['Все растения', ...categories.map(c => c.name)].map(c => (
+                    {['Все растения', 'Скидки', ...categories.map(c => c.name)].map(c => (
                       <button
                         key={c}
                         onClick={() => setCategory(c)}
@@ -2628,7 +2658,7 @@ export default function App() {
                               )}
 
                               <div className="card-bottom">
-                                <strong>от {formatPrice(minPrice)}</strong>
+                                <strong>{firstVariant?.discount_price && Number(firstVariant.discount_price) < Number(firstVariant.price) ? <><span style={{ textDecoration: 'line-through', color: '#899187', fontSize: 13, marginRight: 7 }}>{formatPrice(firstVariant.price)}</span>{formatPrice(firstVariant.discount_price)}</> : <>от {formatPrice(minPrice)}</>}</strong>
                                 <span>Подробнее →</span>
                               </div>
                             </div>
