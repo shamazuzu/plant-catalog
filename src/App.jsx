@@ -2289,6 +2289,15 @@ export default function App() {
                         'Растение из домашней коллекции.'}
                     </p>
 
+                    <div style={plantUniquenessNotice}>
+                      <strong>Каждое растение уникально</strong>
+                      <p>
+                        Живые растения могут немного отличаться от фотографий.
+                        Размеры указаны в карточке, а при заказе можно попросить
+                        фото доступных экземпляров и выбрать тот, который понравится.
+                      </p>
+                    </div>
+
                     <h3 style={{ marginTop: 28 }}>Выберите размер</h3>
 
                     <div style={variantButtons}>
@@ -3210,6 +3219,17 @@ const detailPhoto = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center'
+};
+
+const plantUniquenessNotice = {
+  marginTop: 22,
+  padding: '15px 17px',
+  border: '1px solid #e3e8df',
+  borderRadius: 7,
+  background: '#f5f6f1',
+  color: '#52634f',
+  fontSize: 13,
+  lineHeight: 1.6
 };
 
 const detailTitle = {
