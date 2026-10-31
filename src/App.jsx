@@ -300,7 +300,12 @@ export default function App() {
     setCheckoutMessage('');
     if (!session?.user) { setRegisterMode(true); setLoginOpen(true); return; }
     if (!customerPhone) { setCheckoutMessage('В профиле не указан телефон.'); return; }
+    if (!/^\\+?[0-9()\\-\\s]{7,20}$/.test(customerPhone.trim())) { setCheckoutMessage('Укажи корректный номер телефона.'); return; }
     setCheckoutLoading(true);
+    const { error: profileError } = await supabase.from('customer_profiles').upsert({
+      user_id: session.user.id, phone: customerPhone.trim(), full_name: checkoutName || null
+    }, { onConflict: 'user_id' });
+    if (profileError) { setCheckoutMessage('Не удалось сохранить телефон: ' + profileError.message); setCheckoutLoading(false); return; }
     const { data, error } = await supabase.rpc('place_order', {
       p_items: cartLines.map(item => ({ offer_id: item.offerId, quantity: item.quantity })),
       p_delivery_method: deliveryMethod,
@@ -1598,7 +1603,7 @@ export default function App() {
           >
             Доставка и самовывоз
           </a>
-          <button type="button" style={headerButton} onClick={() => { setCartOpen(true); setAdminOpen(false); }}>
+          <button type="button" style={headerButton} onClick={() => { setCartOpen(true); setSelectedPlantId(null); setSelectedVariantId(null); setAdminOpen(false); }}>
             <ShoppingBag size={16} /> Корзина ({cartCount})
           </button>
 
@@ -1625,11 +1630,17 @@ export default function App() {
                   <LogOut size={15} /> Выйти
                 </button>
               </>
+            ) : session?.user ? (
+              <>
+                <span style={{ ...mutedText, fontSize: 11 }}>{session.user.email}</span>
+                <button onClick={handleLogout} style={headerButton}><LogOut size={15} /> Выйти</button>
+              </>
             ) : (
               <button
                 onClick={() => {
                   setAuthError('');
                   setAuthMessage('');
+                  setRegisterMode(false);
                   setResetEmailMode(false);
                   setLoginOpen(true);
                 }}
@@ -2642,7 +2653,7 @@ export default function App() {
                     <h3>Оформление заказа</h3>
                     {!session?.user ? <p style={mutedText}>Для оформления потребуется регистрация и подтверждение почты. Корзина сохранится и привяжется к аккаунту.</p> : <>
                       <label style={fieldLabel}>Имя</label><input style={fieldInput} value={checkoutName} onChange={e => setCheckoutName(e.target.value)} />
-                      <label style={fieldLabel}>Телефон</label><input style={fieldInput} value={customerPhone} readOnly />
+                      <label style={fieldLabel}>Телефон</label><input required type="tel" style={fieldInput} value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
                       <label style={fieldLabel}>Электронная почта</label><input style={fieldInput} value={session.user.email || ''} readOnly />
                       <label style={fieldLabel}>Способ получения</label><select style={fieldInput} value={deliveryMethod} onChange={e => setDeliveryMethod(e.target.value)}><option value="pickup">Самовывоз</option><option value="courier">Курьерская доставка — обсудим отдельно</option></select>
                       <label style={fieldLabel}>Комментарий</label><textarea style={fieldInput} rows="3" value={checkoutComment} onChange={e => setCheckoutComment(e.target.value)} />
@@ -3030,6 +3041,7 @@ export default function App() {
           onClick={() => {
             setLoginOpen(false);
             setResetEmailMode(false);
+            setRegisterMode(false);
           }}
         >
           <div style={modalBox} onClick={e => e.stopPropagation()}>
@@ -3037,6 +3049,7 @@ export default function App() {
               onClick={() => {
                 setLoginOpen(false);
                 setResetEmailMode(false);
+                setRegisterMode(false);
               }}
               style={closeButton}
               aria-label="Закрыть"
