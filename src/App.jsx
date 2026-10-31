@@ -754,7 +754,20 @@ export default function App() {
           () => {}
         );
       } catch (error) {
-        if (active) setScannerError('Не удалось запустить камеру. Проверь разрешение и HTTPS: ' + (error.message || error));
+        if (!active) return;
+        const denied = error?.name === 'NotAllowedError' ||
+          error?.name === 'PermissionDeniedError' ||
+          /permission|denied|notallowed|отказано|доступ.*камер/i.test(error?.message || String(error));
+        setScannerError(
+          denied
+            ? 'Нет доступа к камере. Разрешите использование камеры в настройках сайта или браузера, затем нажмите «Сканирование QR» ещё раз.'
+            : 'Не удалось запустить камеру. Проверьте, что сайт открыт по HTTPS и браузеру разрешён доступ к камере. ' + (error?.message || error)
+        );
+        if (instance) {
+          try { await instance.stop(); } catch {}
+          try { instance.clear(); } catch {}
+          if (active) setScannerInstance(null);
+        }
       }
     }, 120);
     return () => {
@@ -1408,6 +1421,7 @@ export default function App() {
             }}>
               Санкт-Петербург
             </span>
+            <span className="top-note">Небольшая коллекция растений</span>
           </span>
         </a>
 
@@ -1418,9 +1432,8 @@ export default function App() {
           flexWrap: 'wrap',
           justifyContent: 'flex-end'
         }}>
-          <span className="top-note">Небольшая коллекция растений</span>
+          <button type="button" style={headerButton} onClick={startQrScanner}>Сканирование QR</button>
           <a href="#/promotions" onClick={e => { e.preventDefault(); openPromotions(); }} style={deliveryLink}>Акции</a>
-          <button type="button" style={headerButton} onClick={startQrScanner}>Сканировать QR</button>
 
           <a
             href="#/about"
