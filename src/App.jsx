@@ -2421,7 +2421,7 @@ export default function App() {
                         <div style={detailPrice}>
                           {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) ? <><span style={{ display: 'block', fontSize: 16, color: '#899187', textDecoration: 'line-through' }}>{formatPrice(selectedVariant.price)}</span>{formatPrice(selectedVariant.discount_price)}</> : formatPrice(selectedVariant.price)}
                         </div>
-                        {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) && <p style={{ color: '#b64b42', fontSize: 13, fontWeight: 600 }}>Скидка{selectedVariant.discount_reason ? `: ${selectedVariant.discount_reason}` : ''}</p>
+                        {selectedVariant.discount_price && Number(selectedVariant.discount_price) < Number(selectedVariant.price) && <p style={{ color: '#b64b42', fontSize: 13, fontWeight: 600 }}>Скидка{selectedVariant.discount_reason ? `: ${selectedVariant.discount_reason}` : ''}</p>}
 
                         {selectedVariant.status === 'available' &&
                           Number(selectedVariant.stock) > 0 &&
