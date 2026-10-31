@@ -535,7 +535,7 @@ export default function App() {
     if (!supabase) { setAuthError('Нет подключения к базе данных.'); return; }
     setAuthLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-    if (error) { setAuthError('Не удалось войти. Проверь почту и пароль.'); setAuthLoading(false); return; }
+    if (error) { setAuthError('Не удалось войти: ' + error.message); setAuthLoading(false); return; }
     const admin = await checkAdmin(data.user);
     setSession(data.session);
     setLoginOpen(false);
