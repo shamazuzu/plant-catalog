@@ -191,6 +191,11 @@ const demoPlants = [
 
 export default function App() {
   const [plants, setPlants] = useState([]);
+
+  const [session, setSession] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+
   const [categories, setCategories] = useState([]);
   const [category, setCategory] = useState('Все растения');
   const [query, setQuery] = useState('');
@@ -366,10 +371,6 @@ export default function App() {
   const [scannerError, setScannerError] = useState('');
   const scannerRef = useRef(null);
   const [routeOfferId, setRouteOfferId] = useState(null);
-
-  const [session, setSession] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [authReady, setAuthReady] = useState(false);
 
   const [loginOpen, setLoginOpen] = useState(false);
   const [resetEmailMode, setResetEmailMode] = useState(false);
