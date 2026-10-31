@@ -305,7 +305,7 @@ export default function App() {
     setCheckoutMessage('');
     if (!session?.user) { setRegisterMode(true); setLoginOpen(true); return; }
     if (!customerPhone) { setCheckoutMessage('В профиле не указан телефон.'); return; }
-    if (!/^\\+?[0-9()\\-\\s]{7,20}$/.test(customerPhone.trim())) { setCheckoutMessage('Укажи корректный номер телефона.'); return; }
+    if (!/^\+?[0-9()\s-]{7,20}$/.test(customerPhone.trim())) { setCheckoutMessage('Укажи корректный номер телефона.'); return; }
     setCheckoutLoading(true);
     const { error: profileError } = await supabase.from('customer_profiles').upsert({
       user_id: session.user.id, phone: customerPhone.trim(), full_name: checkoutName || null
@@ -550,7 +550,7 @@ export default function App() {
     setAuthError('');
     setAuthMessage('');
     if (!supabase) { setAuthError('Нет подключения к базе данных.'); return; }
-    if (!/^\\+?[0-9()\\-\\s]{7,20}$/.test(registerPhone.trim())) { setAuthError('Укажи корректный номер телефона.'); return; }
+    if (!/^\+?[0-9()\s-]{7,20}$/.test(registerPhone.trim())) { setAuthError('Укажи корректный номер телефона.'); return; }
     setAuthLoading(true);
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(), password,
